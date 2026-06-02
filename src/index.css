@@ -996,3 +996,17 @@ h1, h2, h3, h4 {
     gap: 0;
   }
 }
+
+@media (max-width: 768px) {
+  .gameplay-area {
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .canvas-wrapper {
+    min-width: 900px;
+    border-radius: 12px;
+    margin: auto;
+  }
+}

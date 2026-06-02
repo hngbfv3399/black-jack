@@ -266,7 +266,7 @@ export const leaveSeat = mutation({
     // Check if table is empty now
     const activePlayers = updatedSeats.filter(s => s.userId !== null);
     
-    if (activePlayers.length === 0 && table.hostId) {
+    if (activePlayers.length === 0) {
       await ctx.db.delete(tableId);
       return;
     }
@@ -354,7 +354,7 @@ export const leaveTable = mutation({
     if (seatIndex !== -1) {
       const activePlayers = updatedSeats.filter(s => s.userId !== null);
       
-      if (activePlayers.length === 0 && table.hostId) {
+      if (activePlayers.length === 0) {
         await ctx.db.delete(tableId);
         return { deleted: true };
       }
@@ -1035,21 +1035,8 @@ export const prepareNextRound = internalMutation({
     const activePlayers = updatedSeats.filter(s => s.userId !== null);
 
     if (activePlayers.length === 0) {
-      if (table.hostId) {
-        await ctx.db.delete(tableId);
-        return;
-      }
-      // Go back to waiting if all players left or got kicked
-      await ctx.db.patch(tableId, {
-        seats: updatedSeats,
-        dealer: { cards: [], status: "playing" },
-        status: "waiting",
-        activeSeatIndex: -1,
-        timer: undefined,
-        roundNumber,
-        history: newHistory.slice(-15),
-        lastUpdated: Date.now(),
-      });
+      await ctx.db.delete(tableId);
+      return;
     } else {
       // Transition to next betting phase
       await ctx.db.patch(tableId, {
