@@ -63,8 +63,8 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
   const SHOE_Y = 120;
   const DEALER_X = WIDTH / 2;
   const DEALER_Y = 150;
-  const CARD_WIDTH = 55;
-  const CARD_HEIGHT = 80;
+  const CARD_WIDTH = 65;
+  const CARD_HEIGHT = 95;
 
   // Calculate coordinates for the 8 seats in a semi-circle
   const getSeatCoords = (index: number) => {
@@ -188,12 +188,15 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       const dpr = window.devicePixelRatio || 1;
       const rect = container.getBoundingClientRect();
       
-      canvas.width = rect.width * dpr;
-      canvas.height = (rect.width * (HEIGHT / WIDTH)) * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.width * (HEIGHT / WIDTH)}px`;
+      // Ensure canvas doesn't shrink too small on mobile screen widths (minimum logical width 900px)
+      const baseWidth = window.innerWidth <= 768 ? Math.max(rect.width, 900) : rect.width;
+      
+      canvas.width = baseWidth * dpr;
+      canvas.height = (baseWidth * (HEIGHT / WIDTH)) * dpr;
+      canvas.style.width = `${baseWidth}px`;
+      canvas.style.height = `${baseWidth * (HEIGHT / WIDTH)}px`;
 
-      ctx.scale(dpr * (rect.width / WIDTH), dpr * (rect.width / WIDTH));
+      ctx.scale(dpr * (baseWidth / WIDTH), dpr * (baseWidth / WIDTH));
     };
 
     resizeCanvas();
@@ -393,7 +396,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.stroke();
 
       c.fillStyle = "#e2b842";
-      c.font = "bold 13px sans-serif";
+      c.font = "bold 15px sans-serif";
       c.textAlign = "center";
       c.textBaseline = "middle";
       
@@ -457,12 +460,12 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
         
         // Nickname
         c.fillStyle = isPlayerSeat ? "#3b82f6" : "#ffffff";
-        c.font = "bold 13px sans-serif";
+        c.font = "bold 15px sans-serif";
         c.fillText(seat.nickname, coords.x, coords.y - 12);
 
         // Chips Balance
         c.fillStyle = "#e2b842";
-        c.font = "11px sans-serif";
+        c.font = "13px sans-serif";
         c.fillText(`$${seat.balance.toLocaleString()}`, coords.x, coords.y + 4);
 
         // Active Bet Chips stack (if placed)
@@ -486,7 +489,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           c.fill();
 
           c.fillStyle = "#ffffff";
-          c.font = "bold 10px sans-serif";
+          c.font = "bold 12px sans-serif";
           c.fillText(scoreText, coords.x, coords.y + 27);
           c.restore();
         }
@@ -554,7 +557,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.fill();
       
       c.fillStyle = "#ffffff";
-      c.font = "bold 9px sans-serif";
+      c.font = "bold 11px sans-serif";
       c.textAlign = "center";
       c.fillText(`$${amount}`, x, y + 26);
 
@@ -605,15 +608,15 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           c.lineWidth = 1.5;
           
           const badgeX = seatCoords.x;
-          const badgeY = seatCoords.y - 56;
+          const badgeY = seatCoords.y - 66;
           
           c.beginPath();
-          c.arc(badgeX, badgeY, 15, 0, Math.PI * 2);
+          c.arc(badgeX, badgeY, 18, 0, Math.PI * 2);
           c.fill();
           c.stroke();
           
           c.fillStyle = "#ffffff";
-          c.font = "bold 12px sans-serif";
+          c.font = "bold 14px sans-serif";
           c.textAlign = "center";
           c.textBaseline = "middle";
           c.fillText(`${val}`, badgeX, badgeY);
