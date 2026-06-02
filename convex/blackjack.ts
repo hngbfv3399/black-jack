@@ -369,7 +369,8 @@ export const leaveTable = mutation({
         newTimer = undefined;
       }
 
-      const newHistory = [...table.history, `${table.seats[seatIndex].nickname} left the table.`].slice(-15);
+      const nickname = table.seats[seatIndex]?.nickname ?? "Player";
+      const newHistory = [...(table.history ?? []), `${nickname} left the table.`].slice(-15);
 
       await ctx.db.patch(tableId, {
         seats: updatedSeats,
