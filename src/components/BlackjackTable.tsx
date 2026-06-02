@@ -140,7 +140,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
         <div className="left-controls">
           <button className="btn-secondary back-btn" onClick={handleBackToLobby}>
             <ArrowLeft size={16} />
-            Lobby
+            <span className="btn-text">Lobby</span>
           </button>
           <div className="table-info">
             <span className="name">{table.name}</span>
@@ -152,7 +152,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
           {isSeated && (
             <button className="btn-danger stand-up-btn" onClick={handleLeaveSeat}>
               <LogOut size={14} />
-              Stand Up
+              <span className="btn-text">Stand Up</span>
             </button>
           )}
           <div className="player-badge">

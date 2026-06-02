@@ -985,3 +985,14 @@ h1, h2, h3, h4 {
   from { opacity: 0; transform: translateY(15px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@media (max-width: 600px) {
+  .btn-text {
+    display: none;
+  }
+  .back-btn,
+  .stand-up-btn {
+    padding: 8px 10px;
+    gap: 0;
+  }
+}

@@ -594,6 +594,31 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
 
           drawCardShape(c, x, y, CARD_WIDTH, CARD_HEIGHT, 5, isRed, card.value, card.suit, !!card.hidden);
         });
+
+        // Render current score value above the cards stack
+        if (cards.length > 0) {
+          const val = getHandValue(cards);
+          
+          c.save();
+          c.fillStyle = "rgba(15, 23, 42, 0.85)";
+          c.strokeStyle = "#e2b842";
+          c.lineWidth = 1.5;
+          
+          const badgeX = seatCoords.x;
+          const badgeY = seatCoords.y - 56;
+          
+          c.beginPath();
+          c.arc(badgeX, badgeY, 15, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+          
+          c.fillStyle = "#ffffff";
+          c.font = "bold 12px sans-serif";
+          c.textAlign = "center";
+          c.textBaseline = "middle";
+          c.fillText(`${val}`, badgeX, badgeY);
+          c.restore();
+        }
       });
     };
 
