@@ -154,6 +154,7 @@ export const createTable = mutation({
       roundNumber: 1,
       history: [`Table "${trimmed}" created by player.`],
       lastUpdated: Date.now(),
+      hostId: userId,
     });
 
     return tableId;
@@ -294,6 +295,83 @@ export const leaveSeat = mutation({
         roundNumber: table.roundNumber,
       });
     }
+  },
+});
+
+// User leaves the table entirely (goes back to lobby or leaves screen)
+// If they are seated, they stand up first. If they are the host, the table is deleted.
+export const leaveTable = mutation({
+  args: { tableId: v.id("tables") },
+  handler: async (ctx, { tableId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return { deleted: false };
+
+    const table = await ctx.db.get(tableId);
+    if (!table) return { deleted: false };
+
+    const seatIndex = table.seats.findIndex(s => s.userId === userId);
+    let updatedSeats = [...table.seats];
+
+    // If seated, handle leaving the seat (refunding/forfeiting bet, syncing balance)
+    if (seatIndex !== -1) {
+      const seat = table.seats[seatIndex];
+      updatedSeats[seatIndex] = {
+        userId: null,
+        nickname: null,
+        balance: 0,
+        bet: 0,
+        cards: [],
+        status: "idle",
+        lastAction: "leave",
+      };
+
+      const user = await ctx.db.get(userId);
+      if (user && seat.balance !== user.balance) {
+        await ctx.db.patch(userId, { balance: seat.balance });
+      }
+
+      // If they left during their active turn, advance the turn asynchronously
+      if (table.status === "playing" && table.activeSeatIndex === seatIndex) {
+        await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+          tableId,
+          roundNumber: table.roundNumber,
+        });
+      }
+    }
+
+    // If host, delete the entire table room!
+    if (table.hostId === userId) {
+      await ctx.db.delete(tableId);
+      return { deleted: true };
+    }
+
+    // Otherwise, patch the table with updated seats if we modified them
+    if (seatIndex !== -1) {
+      const activePlayers = updatedSeats.filter(s => s.userId !== null);
+      
+      let newStatus = table.status;
+      let newActiveSeat = table.activeSeatIndex;
+      let newTimer = table.timer;
+
+      if (activePlayers.length === 0) {
+        newStatus = "waiting";
+        newActiveSeat = -1;
+        newTimer = undefined;
+      }
+
+      const newHistory = [...table.history, `${table.seats[seatIndex].nickname} left the table.`].slice(-15);
+
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        status: newStatus,
+        activeSeatIndex: newActiveSeat,
+        timer: newTimer,
+        history: newHistory,
+        lastUpdated: Date.now(),
+      });
+    }
+
+    return { deleted: false };
   },
 });
 

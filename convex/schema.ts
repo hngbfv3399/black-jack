@@ -42,7 +42,9 @@ export default defineSchema({
     nickname: v.optional(v.string()),
     balance: v.optional(v.number()), // default $3000
     isOnboarded: v.optional(v.boolean()), // default false
-  }).index("by_nickname", ["nickname"]),
+  })
+    .index("by_nickname", ["nickname"])
+    .index("email", ["email"]),
 
   // Blackjack room tables
   tables: defineTable({
@@ -56,5 +58,6 @@ export default defineSchema({
     timer: v.optional(v.number()), // Unix timestamp (ms) when current phase/turn ends
     history: v.array(v.string()), // History logs
     lastUpdated: v.number(), // Unix timestamp (ms) of last modification
+    hostId: v.optional(v.string()), // Host/Creator User ID
   }),
 });

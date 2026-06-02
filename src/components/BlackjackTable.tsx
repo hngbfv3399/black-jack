@@ -14,6 +14,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   const table = useQuery(api.blackjack.getTable, { tableId });
   const joinSeat = useMutation(api.blackjack.joinSeat);
   const leaveSeat = useMutation(api.blackjack.leaveSeat);
+  const leaveTable = useMutation(api.blackjack.leaveTable);
   const placeBet = useMutation(api.blackjack.placeBet);
   const playAction = useMutation(api.blackjack.playAction);
 
@@ -40,13 +41,25 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     }
   }, [table?.status]);
 
-  if (!table) {
+  // Redirect to lobby if the table is deleted/no longer exists
+  useEffect(() => {
+    if (table === null) {
+      alert("The host has closed the room, or this table is no longer available.");
+      onBackToLobby();
+    }
+  }, [table, onBackToLobby]);
+
+  if (table === undefined) {
     return (
       <div className="table-loading">
         <RefreshCw className="spinner" size={40} />
         <p>Loading table state...</p>
       </div>
     );
+  }
+
+  if (table === null) {
+    return null;
   }
 
   // Seating mutator
@@ -67,6 +80,15 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
         alert(err.message || "Failed to leave seat.");
       }
     }
+  };
+
+  const handleBackToLobby = async () => {
+    try {
+      await leaveTable({ tableId });
+    } catch (err: any) {
+      console.error("Failed to leave table:", err);
+    }
+    onBackToLobby();
   };
 
   // Betting Actions
@@ -116,7 +138,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
       {/* HUD Header */}
       <header className="table-header glass">
         <div className="left-controls">
-          <button className="btn-secondary back-btn" onClick={onBackToLobby}>
+          <button className="btn-secondary back-btn" onClick={handleBackToLobby}>
             <ArrowLeft size={16} />
             Lobby
           </button>
