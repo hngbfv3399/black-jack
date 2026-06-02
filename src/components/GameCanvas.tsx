@@ -690,10 +690,9 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       // Turn countdown timer progress bar (if timer set)
       if (table.timer) {
         const timeRemaining = table.timer - Date.now();
-        // Calculate original duration based on status:
-        // Betting: 15s, Playing turns: 15s, Review/Round over: 8s
+        // Betting: 15s, Playing turns: 15s, Review/Round over: 3s
         let duration = 15000;
-        if (table.status === "round_over") duration = 8000;
+        if (table.status === "round_over") duration = 3000;
 
         const ratio = Math.max(0, Math.min(1, timeRemaining / duration));
 

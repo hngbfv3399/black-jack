@@ -982,11 +982,11 @@ export const settleRound = internalMutation({
       seats: updatedSeats,
       history: newHistory.slice(-15),
       status: "round_over",
-      timer: Date.now() + 8000, // 8 seconds review time
+      timer: Date.now() + 3000, // 3 seconds review time
       lastUpdated: Date.now(),
     });
 
-    await ctx.scheduler.runAfter(8000, internal.blackjack.prepareNextRound, {
+    await ctx.scheduler.runAfter(3000, internal.blackjack.prepareNextRound, {
       tableId,
       roundNumber: nextRound,
     });
