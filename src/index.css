@@ -466,7 +466,15 @@ h1, h2, h3, h4 {
 
 @media (max-width: 900px) {
   .lobby-content {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .lobby-main {
+    order: 1;
+  }
+  .lobby-sidebar {
+    order: 2;
   }
 }
 
@@ -986,6 +994,27 @@ h1, h2, h3, h4 {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.player-badge-name {
+  display: inline;
+}
+
+@media (max-width: 768px) {
+  .gameplay-area {
+    padding: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+  }
+  .canvas-wrapper {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 12px;
+    margin: auto;
+    box-shadow: 0 15px 40px -15px rgba(0, 0, 0, 0.8);
+  }
+}
+
 @media (max-width: 600px) {
   .btn-text {
     display: none;
@@ -995,18 +1024,98 @@ h1, h2, h3, h4 {
     padding: 8px 10px;
     gap: 0;
   }
-}
-
-@media (max-width: 768px) {
-  .gameplay-area {
-    overflow-x: auto;
-    justify-content: flex-start;
-    padding: 12px;
-    -webkit-overflow-scrolling: touch;
+  .player-badge-name {
+    display: none;
   }
-  .canvas-wrapper {
-    min-width: 900px;
+  .table-header {
+    padding: 8px 12px;
+    margin: 8px 8px 0;
+  }
+  .table-footer {
+    padding: 12px 16px;
+    margin: 0 8px 8px;
+    min-height: 90px;
+  }
+  .betting-hud {
+    gap: 8px;
+  }
+  .chip-rack {
+    gap: 8px;
+  }
+  .chip-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 11px;
+  }
+  .bet-actions {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  .bet-actions .buttons {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+  .bet-actions .buttons button {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+  }
+  .action-buttons {
+    width: 100%;
+    gap: 8px;
+  }
+  .action-buttons button {
+    flex: 1;
+    padding: 12px 0 !important;
+    font-size: 14px;
+    text-align: center;
+  }
+  .turn-indicator {
+    font-size: 11px;
+  }
+  .lobby-container {
+    padding: 12px;
+    gap: 12px;
+  }
+  .lobby-header {
+    padding: 12px 16px;
+  }
+  .lobby-main {
+    padding: 16px;
+    min-height: auto;
+  }
+  .lobby-sidebar {
+    padding: 16px;
+  }
+  .section-title-bar h2 {
+    font-size: 18px;
+  }
+  .create-table-form {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .create-table-form button {
+    width: 100%;
+    justify-content: center;
+  }
+  .onboarding-card {
+    padding: 24px 16px;
     border-radius: 12px;
-    margin: auto;
+  }
+  .onboarding-form {
+    gap: 16px;
+  }
+  .login-card {
+    padding: 32px 20px;
+    border-radius: 12px;
+  }
+  .login-logo h1 {
+    font-size: 26px;
+  }
+  .login-tagline {
+    font-size: 14px;
+    margin-bottom: 24px;
   }
 }

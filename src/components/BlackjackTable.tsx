@@ -157,7 +157,10 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
           )}
           <div className="player-badge">
             <Coins size={14} className="gold" />
-            <span>{user.nickname}: <strong>${playerSeat ? playerSeat.balance.toLocaleString() : user.balance.toLocaleString()}</strong></span>
+            <span>
+              <span className="player-badge-name">{user.nickname}: </span>
+              <strong>${playerSeat ? playerSeat.balance.toLocaleString() : user.balance.toLocaleString()}</strong>
+            </span>
           </div>
         </div>
       </header>

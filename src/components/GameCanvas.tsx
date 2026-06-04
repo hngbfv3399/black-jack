@@ -55,10 +55,13 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
   }>({ seats: {}, dealer: 0 });
 
   const [hoveredSeat, setHoveredSeat] = useState<number | null>(null);
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
+    return typeof window !== "undefined" && window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
+  });
 
-  // Constants for dimensions on a logical 1200x800 canvas
-  const WIDTH = 1200;
-  const HEIGHT = 800;
+  // Dimensions on a logical canvas
+  const WIDTH = isPortrait ? 800 : 1200;
+  const HEIGHT = isPortrait ? 1200 : 800;
   const SHOE_X = WIDTH - 120;
   const SHOE_Y = 120;
   const DEALER_X = WIDTH / 2;
@@ -66,9 +69,28 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
   const CARD_WIDTH = 65;
   const CARD_HEIGHT = 95;
 
-  // Calculate coordinates for the 8 seats in a semi-circle
+  // Calculate coordinates for the 8 seats
   const getSeatCoords = (index: number) => {
-    // 8 seats arranged from PI * 0.15 to PI * 0.85
+    if (isPortrait) {
+      // 8 seats arranged in a deep U-shape for portrait mode
+      const portraitCoords = [
+        { x: 140, y: 360 }, // Seat 0 (top-left)
+        { x: 140, y: 520 }, // Seat 1 (mid-left-high)
+        { x: 170, y: 680 }, // Seat 2 (mid-left-low)
+        { x: 270, y: 820 }, // Seat 3 (bottom-left)
+        { x: 530, y: 820 }, // Seat 4 (bottom-right)
+        { x: 630, y: 680 }, // Seat 5 (mid-right-low)
+        { x: 660, y: 520 }, // Seat 6 (mid-right-high)
+        { x: 660, y: 360 }, // Seat 7 (top-right)
+      ];
+      return {
+        x: portraitCoords[index].x,
+        y: portraitCoords[index].y,
+        angle: 0,
+      };
+    }
+
+    // 8 seats arranged from PI * 0.15 to PI * 0.85 (Landscape)
     const startAngle = Math.PI * 0.85;
     const endAngle = Math.PI * 0.15;
     const angleRange = startAngle - endAngle;
@@ -83,6 +105,39 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       x: centerX + Math.cos(angle) * radiusX,
       y: centerY + Math.sin(angle) * radiusY + 80,
       angle: angle,
+    };
+  };
+
+  // Get offsets for cards, badges, and chips stacks based on layout/seat
+  const getSeatOffsets = (index: number) => {
+    if (!isPortrait) {
+      return {
+        card: { x: -20, y: -40 },
+        badge: { x: 0, y: -66 },
+        chips: { x: 0, y: -70 }
+      };
+    }
+    // Left-side seats (0, 1, 2)
+    if (index <= 2) {
+      return {
+        card: { x: 55, y: -47 },
+        badge: { x: 85, y: -73 },
+        chips: { x: 85, y: -5 }
+      };
+    }
+    // Right-side seats (5, 6, 7)
+    if (index >= 5) {
+      return {
+        card: { x: -120, y: -47 },
+        badge: { x: -90, y: -73 },
+        chips: { x: -90, y: -5 }
+      };
+    }
+    // Bottom seats (3, 4)
+    return {
+      card: { x: -20, y: -95 },
+      badge: { x: 0, y: -121 },
+      chips: { x: 0, y: -125 }
     };
   };
 
@@ -109,10 +164,11 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
         for (let i = prevCount; i < currentCards.length; i++) {
           const card = currentCards[i];
           const seatCoords = getSeatCoords(seatIdx);
+          const offsets = getSeatOffsets(seatIdx);
           
           // Position offset for multiple cards in a hand
-          const targetX = seatCoords.x - 20 + i * 16;
-          const targetY = seatCoords.y - 40;
+          const targetX = seatCoords.x + offsets.card.x + i * 16;
+          const targetY = seatCoords.y + offsets.card.y;
 
           newAnimatedCards.push({
             id: `seat-${seatIdx}-${i}-${Date.now()}`,
@@ -168,7 +224,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       animatedCardsRef.current = [...animatedCardsRef.current, ...newAnimatedCards];
     }
 
-  }, [table]);
+  }, [table, isPortrait]);
 
   // Canvas drawing loop
   useEffect(() => {
@@ -188,15 +244,20 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       const dpr = window.devicePixelRatio || 1;
       const rect = container.getBoundingClientRect();
       
-      // Ensure canvas doesn't shrink too small on mobile screen widths (minimum logical width 900px)
-      const baseWidth = window.innerWidth <= 768 ? Math.max(rect.width, 900) : rect.width;
+      const containerWidth = rect.width;
+      const isPortraitMode = window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
       
-      canvas.width = baseWidth * dpr;
-      canvas.height = (baseWidth * (HEIGHT / WIDTH)) * dpr;
-      canvas.style.width = `${baseWidth}px`;
-      canvas.style.height = `${baseWidth * (HEIGHT / WIDTH)}px`;
+      setIsPortrait(isPortraitMode);
 
-      ctx.scale(dpr * (baseWidth / WIDTH), dpr * (baseWidth / WIDTH));
+      const activeWidth = isPortraitMode ? 800 : 1200;
+      const activeHeight = isPortraitMode ? 1200 : 800;
+      
+      canvas.width = containerWidth * dpr;
+      canvas.height = (containerWidth * (activeHeight / activeWidth)) * dpr;
+      canvas.style.width = `${containerWidth}px`;
+      canvas.style.height = `${containerWidth * (activeHeight / activeWidth)}px`;
+
+      ctx.scale(dpr * (containerWidth / activeWidth), dpr * (containerWidth / activeWidth));
     };
 
     resizeCanvas();
@@ -226,7 +287,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
         const isActive = table.activeSeatIndex === index;
         const isPlayerSeat = seat.userId === currentUserId && currentUserId !== null;
 
-        drawSeat(ctx, seat, coords, isActive, isHovered, isPlayerSeat);
+        drawSeat(ctx, seat, coords, isActive, isHovered, isPlayerSeat, index);
       });
 
       // 4. Draw static card hands (already dealt)
@@ -328,7 +389,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
 
     const drawTableFelt = (c: CanvasRenderingContext2D) => {
       // 1. Radial green felt gradient
-      const grad = c.createRadialGradient(WIDTH / 2, HEIGHT / 3, 100, WIDTH / 2, HEIGHT / 2, 700);
+      const grad = c.createRadialGradient(WIDTH / 2, HEIGHT / 3, 100, WIDTH / 2, HEIGHT / 2, isPortrait ? 600 : 700);
       grad.addColorStop(0, "#134e4a"); // Light deep green
       grad.addColorStop(0.6, "#0f172a"); // Dark slate slate blue
       grad.addColorStop(1, "#020617"); // Midnight black outer
@@ -339,7 +400,9 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.strokeStyle = "rgba(226, 184, 66, 0.4)";
       c.lineWidth = 4;
       c.beginPath();
-      c.arc(WIDTH / 2, HEIGHT * 0.38, 480, Math.PI * 0.15, Math.PI * 0.85);
+      const arcRadius = isPortrait ? 280 : 480;
+      const arcCenterY = isPortrait ? HEIGHT * 0.48 : HEIGHT * 0.38;
+      c.arc(WIDTH / 2, arcCenterY, arcRadius, Math.PI * 0.15, Math.PI * 0.85);
       c.stroke();
 
       // 3. Curved white text guidelines
@@ -350,9 +413,9 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       
       c.save();
       // Draw Payout rules arc
-      c.fillText("BLACKJACK PAYS 3 TO 2", WIDTH / 2, HEIGHT * 0.32);
+      c.fillText("BLACKJACK PAYS 3 TO 2", WIDTH / 2, arcCenterY - 60);
       c.font = "14px sans-serif";
-      c.fillText("Dealer must stand on 17 and draw to 16", WIDTH / 2, HEIGHT * 0.36);
+      c.fillText("Dealer must stand on 17 and draw to 16", WIDTH / 2, arcCenterY - 20);
       c.restore();
     };
 
@@ -418,7 +481,8 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       coords: { x: number; y: number },
       isActive: boolean,
       isHovered: boolean,
-      isPlayerSeat: boolean
+      isPlayerSeat: boolean,
+      index: number
     ) => {
       c.save();
 
@@ -453,6 +517,8 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       // Clear shadow
       c.shadowBlur = 0;
 
+      const offsets = getSeatOffsets(index);
+
       // 2. Draw Seat Content
       if (seat.userId !== null) {
         // Seated Player Details
@@ -470,7 +536,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
 
         // Active Bet Chips stack (if placed)
         if (seat.bet > 0) {
-          drawChipsStack(c, coords.x, coords.y - 70, seat.bet);
+          drawChipsStack(c, coords.x + offsets.chips.x, coords.y + offsets.chips.y, seat.bet);
         }
 
         // Status Badge / Hand value
@@ -586,13 +652,14 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
 
         const seatCoords = getSeatCoords(seatIdx);
         const cards = seat.cards || [];
+        const offsets = getSeatOffsets(seatIdx);
 
         cards.forEach((card: any, cardIdx: number) => {
           const isAnimating = animatedCardsRef.current.some(ac => ac.id.startsWith(`seat-${seatIdx}-${cardIdx}-`));
           if (isAnimating) return; // let animation draw it
 
-          const x = seatCoords.x - 20 + cardIdx * 16;
-          const y = seatCoords.y - 40;
+          const x = seatCoords.x + offsets.card.x + cardIdx * 16;
+          const y = seatCoords.y + offsets.card.y;
           const isRed = ["H", "D"].includes(card.suit);
 
           drawCardShape(c, x, y, CARD_WIDTH, CARD_HEIGHT, 5, isRed, card.value, card.suit, !!card.hidden);
@@ -607,8 +674,8 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           c.strokeStyle = "#e2b842";
           c.lineWidth = 1.5;
           
-          const badgeX = seatCoords.x;
-          const badgeY = seatCoords.y - 66;
+          const badgeX = seatCoords.x + offsets.badge.x;
+          const badgeY = seatCoords.y + offsets.badge.y;
           
           c.beginPath();
           c.arc(badgeX, badgeY, 18, 0, Math.PI * 2);
@@ -665,9 +732,9 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.strokeStyle = "rgba(226, 184, 66, 0.25)";
       c.lineWidth = 1;
 
-      const logW = 340;
+      const logW = isPortrait ? 720 : 340;
       const logH = 120;
-      const logX = 20;
+      const logX = isPortrait ? 40 : 20;
       const logY = HEIGHT - logH - 20;
 
       c.beginPath();
@@ -705,7 +772,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           c.font = "bold 11px sans-serif";
           c.fillText(
             table.status === "betting" ? "BETTING TIME" : (table.status === "round_over" ? "NEXT ROUND IN" : "TURN TIME"),
-            WIDTH - 150,
+            isPortrait ? WIDTH - 180 : WIDTH - 150,
             HEIGHT - 45
           );
 
@@ -713,14 +780,14 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           c.strokeStyle = "rgba(255,255,255,0.2)";
           c.lineWidth = 1;
           c.beginPath();
-          c.roundRect(WIDTH - 150, HEIGHT - 35, 130, 8, 4);
+          c.roundRect(isPortrait ? WIDTH - 180 : WIDTH - 150, HEIGHT - 35, isPortrait ? 140 : 130, 8, 4);
           c.stroke();
 
           // Bar inner (progress color transitions from green to red)
           const barColor = ratio > 0.4 ? "#10b981" : (ratio > 0.2 ? "#f59e0b" : "#ef4444");
           c.fillStyle = barColor;
           c.beginPath();
-          c.roundRect(WIDTH - 150, HEIGHT - 35, 130 * ratio, 8, 4);
+          c.roundRect(isPortrait ? WIDTH - 180 : WIDTH - 150, HEIGHT - 35, (isPortrait ? 140 : 130) * ratio, 8, 4);
           c.fill();
         }
       }
@@ -735,7 +802,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, [table, hoveredSeat, currentUserId]);
+  }, [table, hoveredSeat, currentUserId, isPortrait]);
 
   // Click Handler for Seating
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
