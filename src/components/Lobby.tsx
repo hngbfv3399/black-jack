@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { LogOut, Plus, RefreshCw, Spade } from "lucide-react";
+import { LogOut, Plus, RefreshCw, Spade, Trophy } from "lucide-react";
 
 interface LobbyProps {
   user: any;
@@ -10,21 +10,19 @@ interface LobbyProps {
 }
 
 export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
-  const tables = useQuery(api.blackjack.listTables);
+  const dbTables = useQuery(api.blackjack.listTables);
+  const leaderboard = useQuery(api.users.getLeaderboard);
   const seedDefaultTable = useMutation(api.blackjack.seedDefaultTable);
   
   const [tableName, setTableName] = useState("");
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
-  // We will add the custom createTable mutation in a moment, but if it doesn't exist yet,
-  // we can use seedDefaultTable or define a simple fallback helper.
-  // Wait, let's call seedDefaultTable if tables list is empty, or let the user click "Quick Play".
   const handleQuickPlay = async () => {
     try {
       const tableId = await seedDefaultTable();
       onSelectTable(tableId);
-    } catch (err: any) {
+    } catch {
       setError("Failed to start quick play table.");
     }
   };
@@ -37,25 +35,20 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
       setError("Table name must be at least 2 characters.");
       return;
     }
+    
     setIsCreating(true);
     try {
-      // We will add a createTable mutation to blackjack.ts.
-      // If the model hasn't generated the type for blackjack.createTable,
-      // it might warn, but let's call it and ensure it's written in blackjack.ts.
-      // Let's call a mutation api.blackjack.createTable which we will edit shortly.
-      // Wait, is there a createTable mutation? Let's add it to blackjack.ts so it exists.
-      // Yes, we will add it.
       const createTable = (api.blackjack as any).createTable;
       if (createTable) {
         const tableId = await createTable({ name });
         onSelectTable(tableId);
       } else {
-        // Fallback to seedDefaultTable if not compiled yet
         const tableId = await seedDefaultTable();
         onSelectTable(tableId);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to create table.");
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setError(errMsg || "Failed to create table.");
     } finally {
       setIsCreating(false);
       setTableName("");
@@ -83,7 +76,7 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
 
       {/* Main content grid */}
       <main className="lobby-content">
-        {/* Left side: Stats / Dashboard */}
+        {/* Left side: Stats / Leaderboard */}
         <section className="lobby-sidebar glass">
           <div className="promo-card">
             <h3>Welcome back!</h3>
@@ -92,17 +85,53 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
               <span className="label">YOUR CHIPS</span>
               <span className="amount">${user.balance?.toLocaleString()}</span>
             </div>
-            {user.balance <= 0 && (
-              <button 
-                className="btn-primary refill-btn"
-                onClick={async () => {
-                  // We can add a simple mutation to refill balance if player goes bust.
-                  // For now, let's keep it simple.
-                }}
-                disabled
-              >
-                Refill Chips (Auto-refills when joining seats)
-              </button>
+          </div>
+
+          {/* Real-time Leaderboard Ranking */}
+          <div className="leaderboard-card glass">
+            <div className="leaderboard-header">
+              <Trophy size={18} className="trophy-icon" />
+              <h4>Global Leaderboard</h4>
+            </div>
+            
+            {leaderboard === undefined ? (
+              <div className="leaderboard-loading">
+                <RefreshCw className="spinner animate-spin" size={16} />
+                <span>Loading rankings...</span>
+              </div>
+            ) : leaderboard.length === 0 ? (
+              <div className="leaderboard-empty">No ranked players yet.</div>
+            ) : (
+              <div className="leaderboard-list">
+                {leaderboard.map((player, idx) => {
+                  const isCurrentUser = player._id === user._id;
+                  const rank = idx + 1;
+                  return (
+                    <div 
+                      key={player._id} 
+                      className={`leaderboard-item ${isCurrentUser ? "current-user" : ""}`}
+                    >
+                      <div className="leaderboard-rank">
+                        {rank === 1 ? (
+                          <span className="rank-badge rank-1">🥇</span>
+                        ) : rank === 2 ? (
+                          <span className="rank-badge rank-2">🥈</span>
+                        ) : rank === 3 ? (
+                          <span className="rank-badge rank-3">🥉</span>
+                        ) : (
+                          <span className="rank-badge rank-other">{rank}</span>
+                        )}
+                      </div>
+                      <div className="leaderboard-name" title={player.nickname}>
+                        {player.nickname}
+                      </div>
+                      <div className="leaderboard-balance">
+                        ${player.balance.toLocaleString()}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -129,12 +158,12 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
 
           {error && <div className="error-message">{error}</div>}
 
-          {tables === undefined ? (
+          {dbTables === undefined ? (
             <div className="loading-container">
               <RefreshCw className="spinner" />
               <p>Fetching active tables...</p>
             </div>
-          ) : tables.length === 0 ? (
+          ) : dbTables.length === 0 ? (
             <div className="empty-lobby">
               <Spade size={48} className="empty-icon" />
               <p>No tables are open right now. Be the first to open one!</p>
@@ -144,7 +173,7 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
             </div>
           ) : (
             <div className="table-grid">
-              {tables.map((table) => (
+              {dbTables.map((table) => (
                 <div key={table._id} className="table-card glass-hover">
                   <div className="table-card-header">
                     <h3>{table.name}</h3>

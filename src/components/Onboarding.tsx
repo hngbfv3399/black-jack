@@ -3,7 +3,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 interface OnboardingProps {
-  onComplete: () => void;
+  onComplete: (nickname?: string) => void;
 }
 
 export default function Onboarding({ onComplete }: OnboardingProps) {

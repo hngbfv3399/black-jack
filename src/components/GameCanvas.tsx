@@ -1,5 +1,37 @@
 import React, { useRef, useEffect, useState } from "react";
 
+// Canvas roundRect polyfill for older browsers/headless environments
+if (typeof CanvasRenderingContext2D !== "undefined" && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (
+    this: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radii: any
+  ) {
+    if (!radii) radii = 0;
+    if (typeof radii === "number") radii = [radii, radii, radii, radii];
+    const r = {
+      tl: radii[0] || 0,
+      tr: radii[1] || 0,
+      br: radii[2] || 0,
+      bl: radii[3] || 0,
+    };
+    this.moveTo(x + r.tl, y);
+    this.lineTo(x + w - r.tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+    this.lineTo(x + w, y + h - r.br);
+    this.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+    this.lineTo(x + r.bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+    this.lineTo(x, y + r.tl);
+    this.quadraticCurveTo(x, y, x + r.tl, y);
+    this.closePath();
+    return this;
+  };
+}
+
 // Local helper to calculate hands score values
 const getHandValue = (cards: any[]): number => {
   let value = 0;
@@ -46,6 +78,7 @@ interface AnimatedCard {
 export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const feltTextureRef = useRef<HTMLCanvasElement | null>(null);
   
   // Animation state stored in refs for the render loop
   const animatedCardsRef = useRef<AnimatedCard[]>([]);
@@ -303,14 +336,74 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       animationFrameId = requestAnimationFrame(render);
     };
 
+    // Vector Suit Drawing Utility
+    const drawSuitVector = (c: CanvasRenderingContext2D, x: number, y: number, size: number, suit: string, color: string) => {
+      c.save();
+      c.fillStyle = color;
+      c.beginPath();
+      
+      const cx = x + size / 2;
+      const cy = y + size / 2;
+
+      if (suit === "D" || suit === "♦") {
+        c.moveTo(cx, cy - size / 2);
+        c.lineTo(cx + size / 2, cy);
+        c.lineTo(cx, cy + size / 2);
+        c.lineTo(cx - size / 2, cy);
+        c.closePath();
+        c.fill();
+      } else if (suit === "H" || suit === "♥") {
+        c.moveTo(cx, cy - size / 5);
+        c.bezierCurveTo(cx - size / 3, cy - size / 2 - size / 10, cx - size / 2, cy - size / 10, cx, cy + size / 2.2);
+        c.bezierCurveTo(cx + size / 2, cy - size / 10, cx + size / 3, cy - size / 2 - size / 10, cx, cy - size / 5);
+        c.closePath();
+        c.fill();
+      } else if (suit === "S" || suit === "♠") {
+        // Stem
+        c.moveTo(cx, cy);
+        c.quadraticCurveTo(cx - size / 6, cy + size / 2, cx - size / 4, cy + size / 2);
+        c.lineTo(cx + size / 4, cy + size / 2);
+        c.quadraticCurveTo(cx + size / 6, cy, cx, cy);
+        c.closePath();
+        c.fill();
+        // Main body (upside down heart)
+        c.beginPath();
+        c.moveTo(cx, cy - size / 2.2);
+        c.bezierCurveTo(cx - size / 2, cy - size / 2.2, cx - size / 2.2, cy, cx, cy + size / 6);
+        c.bezierCurveTo(cx + size / 2.2, cy, cx + size / 2, cy - size / 2.2, cx, cy - size / 2.2);
+        c.closePath();
+        c.fill();
+      } else if (suit === "C" || suit === "♣") {
+        // Stem
+        c.moveTo(cx, cy);
+        c.quadraticCurveTo(cx - size / 6, cy + size / 2, cx - size / 4, cy + size / 2);
+        c.lineTo(cx + size / 4, cy + size / 2);
+        c.quadraticCurveTo(cx + size / 6, cy, cx, cy);
+        c.closePath();
+        c.fill();
+        // Circles
+        const r = size / 4;
+        c.beginPath();
+        c.arc(cx, cy - size / 6, r, 0, Math.PI * 2);
+        c.fill();
+        c.beginPath();
+        c.arc(cx - size / 5, cy + size / 10, r, 0, Math.PI * 2);
+        c.fill();
+        c.beginPath();
+        c.arc(cx + size / 5, cy + size / 10, r, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.restore();
+    };
+
     // Card drawing utility
     const drawCardShape = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number, isRed: boolean, valueStr: string, suitStr: string, isFaceDown: boolean) => {
       c.save();
       // Card Shadow
-      c.shadowColor = "rgba(0, 0, 0, 0.4)";
+      c.shadowColor = "rgba(0, 0, 0, 0.45)";
       c.shadowBlur = 8;
-      c.shadowOffsetX = 2;
-      c.shadowOffsetY = 4;
+      c.shadowOffsetX = 1.5;
+      c.shadowOffsetY = 3.5;
 
       c.beginPath();
       c.moveTo(x + radius, y);
@@ -325,67 +418,91 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.closePath();
 
       if (isFaceDown) {
-        // Draw card back
+        // Draw card back radial gradient
         const grad = c.createRadialGradient(x + w/2, y + h/2, 5, x + w/2, y + h/2, w);
         grad.addColorStop(0, "#1e3c72");
         grad.addColorStop(1, "#0a1931");
         c.fillStyle = grad;
         c.fill();
         
-        c.shadowBlur = 0; // Turn off shadow for grid
+        c.shadowBlur = 0; // border
         c.strokeStyle = "#e2b842";
-        c.lineWidth = 2.5;
+        c.lineWidth = 2;
         c.stroke();
 
-        // Elegant geometric pattern inside
-        c.strokeStyle = "rgba(226, 184, 66, 0.2)";
-        c.lineWidth = 1;
+        // Elegant filigree pattern on card back
+        c.strokeStyle = "rgba(226, 184, 66, 0.25)";
+        c.lineWidth = 1.2;
         c.beginPath();
-        c.moveTo(x + 10, y + 10);
-        c.lineTo(x + w - 10, y + h - 10);
-        c.moveTo(x + w - 10, y + 10);
-        c.lineTo(x + 10, y + h - 10);
+        c.roundRect(x + 5, y + 5, w - 10, h - 10, radius - 1);
         c.stroke();
         
-        // Center spade icon
-        c.fillStyle = "#e2b842";
-        c.font = "bold 20px sans-serif";
-        c.textAlign = "center";
-        c.textBaseline = "middle";
-        c.fillText("♠", x + w/2, y + h/2);
-      } else {
-        // Draw card front
-        c.fillStyle = "#ffffff";
-        c.fill();
-        c.shadowBlur = 0; // border
-        c.strokeStyle = "#e2e8f0";
-        c.lineWidth = 1;
+        c.beginPath();
+        c.arc(x + w/2, y + h/2, 16, 0, Math.PI * 2);
+        c.stroke();
+        c.beginPath();
+        c.arc(x + w/2, y + h/2, 8, 0, Math.PI * 2);
         c.stroke();
 
-        // Content
-        c.fillStyle = isRed ? "#e53e3e" : "#1a202c";
-        c.font = "bold 16px sans-serif";
+        c.beginPath();
+        c.moveTo(x + 5, y + 5); c.lineTo(x + w - 5, y + h - 5);
+        c.moveTo(x + w - 5, y + 5); c.lineTo(x + 5, y + h - 5);
+        c.stroke();
+
+        drawSuitVector(c, x + w/2 - 6, y + h/2 - 6, 12, "S", "#e2b842");
+      } else {
+        // Draw card front paper gradient
+        const cardGrad = c.createLinearGradient(x, y, x + w, y + h);
+        cardGrad.addColorStop(0, "#ffffff");
+        cardGrad.addColorStop(0.85, "#fefefa");
+        cardGrad.addColorStop(1, "#f4f4ec");
+        c.fillStyle = cardGrad;
+        c.fill();
+        
+        c.shadowBlur = 0; // border
+        c.strokeStyle = "rgba(15, 23, 42, 0.08)";
+        c.lineWidth = 1.2;
+        c.stroke();
+
+        const suitColor = isRed ? "#dc2626" : "#0f172a";
+
+        // Value text
+        c.fillStyle = suitColor;
+        c.font = "bold 15px 'Outfit', sans-serif";
         c.textAlign = "left";
         c.textBaseline = "top";
         c.fillText(valueStr, x + 6, y + 6);
         
-        // Suit icon
-        let suitGlyph = "♠";
-        if (suitStr === "H") suitGlyph = "♥";
-        if (suitStr === "D") suitGlyph = "♦";
-        if (suitStr === "C") suitGlyph = "♣";
-        
-        c.font = "20px sans-serif";
-        c.fillText(suitGlyph, x + 6, y + 24);
+        // Small top suit
+        drawSuitVector(c, x + 5, y + 23, 11, suitStr, suitColor);
 
-        // Center large suit glyph
-        c.font = "32px sans-serif";
-        c.textAlign = "center";
-        c.textBaseline = "middle";
-        c.fillText(suitGlyph, x + w / 2, y + h / 2 + 5);
+        // Large center suit
+        drawSuitVector(c, x + w / 2 - 16, y + h / 2 - 14, 32, suitStr, suitColor);
       }
       c.restore();
     };
+
+    // Offscreen felt texture canvas
+    if (!feltTextureRef.current) {
+      feltTextureRef.current = document.createElement("canvas");
+      feltTextureRef.current.width = 1200;
+      feltTextureRef.current.height = 1200;
+      const tc = feltTextureRef.current.getContext("2d");
+      if (tc) {
+        tc.strokeStyle = "rgba(255, 255, 255, 0.018)";
+        tc.lineWidth = 0.8;
+        for (let i = 0; i < 2000; i++) {
+          const rx = Math.random() * 1200;
+          const ry = Math.random() * 1200;
+          const length = 1.5 + Math.random() * 4.5;
+          const angle = Math.random() * Math.PI * 2;
+          tc.beginPath();
+          tc.moveTo(rx, ry);
+          tc.lineTo(rx + Math.cos(angle) * length, ry + Math.sin(angle) * length);
+          tc.stroke();
+        }
+      }
+    }
 
     const drawTableFelt = (c: CanvasRenderingContext2D) => {
       // 1. Radial green felt gradient
@@ -396,17 +513,40 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.fillStyle = grad;
       c.fillRect(0, 0, WIDTH, HEIGHT);
 
-      // 2. Curved gold boundary line
-      c.strokeStyle = "rgba(226, 184, 66, 0.4)";
-      c.lineWidth = 4;
-      c.beginPath();
+      // Draw offscreen felt fabric noise texture overlay
+      if (feltTextureRef.current) {
+        c.save();
+        c.globalCompositeOperation = "screen";
+        c.drawImage(feltTextureRef.current, 0, 0, WIDTH, HEIGHT);
+        c.restore();
+      }
+
+      // Arc constants
       const arcRadius = isPortrait ? 280 : 480;
       const arcCenterY = isPortrait ? HEIGHT * 0.48 : HEIGHT * 0.38;
+
+      // 2a. Mahogany wood bumper rim (thick back rim)
+      c.strokeStyle = "#27160c";
+      c.lineWidth = 26;
+      c.beginPath();
+      c.arc(WIDTH / 2, arcCenterY, arcRadius + 13, Math.PI * 0.14, Math.PI * 0.86);
+      c.stroke();
+      
+      c.strokeStyle = "rgba(255, 255, 255, 0.05)";
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(WIDTH / 2, arcCenterY, arcRadius + 25, Math.PI * 0.14, Math.PI * 0.86);
+      c.stroke();
+
+      // 2b. Curved gold boundary line
+      c.strokeStyle = "rgba(226, 184, 66, 0.5)";
+      c.lineWidth = 3;
+      c.beginPath();
       c.arc(WIDTH / 2, arcCenterY, arcRadius, Math.PI * 0.15, Math.PI * 0.85);
       c.stroke();
 
       // 3. Curved white text guidelines
-      c.fillStyle = "rgba(255, 255, 255, 0.15)";
+      c.fillStyle = "rgba(255, 255, 255, 0.12)";
       c.font = "bold 20px 'Outfit', sans-serif";
       c.textAlign = "center";
       c.textBaseline = "middle";
@@ -519,6 +659,20 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
 
       const offsets = getSeatOffsets(index);
 
+      // Card placeholder guide
+      if (seat.userId !== null) {
+        c.save();
+        const cardX = coords.x + offsets.card.x;
+        const cardY = coords.y + offsets.card.y;
+        c.strokeStyle = "rgba(226, 184, 66, 0.12)";
+        c.lineWidth = 1.2;
+        c.setLineDash([4, 3]);
+        c.beginPath();
+        c.roundRect(cardX, cardY, CARD_WIDTH, CARD_HEIGHT, 5);
+        c.stroke();
+        c.restore();
+      }
+
       // 2. Draw Seat Content
       if (seat.userId !== null) {
         // Seated Player Details
@@ -581,51 +735,105 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       c.restore();
     };
 
+    // Draw single premium 3D casino chip
+    const drawSingleChip = (c: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, amount: number) => {
+      let primaryColor = "#dc2626"; // Red for default
+      let accentColor = "#ffffff";
+      if (amount >= 1000) { primaryColor = "#0f172a"; accentColor = "#e2b842"; } // Black/Gold
+      else if (amount >= 500) { primaryColor = "#7c3aed"; accentColor = "#ffffff"; } // Purple
+      else if (amount >= 100) { primaryColor = "#2563eb"; accentColor = "#ffffff"; } // Blue
+      else if (amount >= 25) { primaryColor = "#16a34a"; accentColor = "#ffffff"; } // Green
+
+      c.save();
+      // Outer shadow
+      c.shadowColor = "rgba(0, 0, 0, 0.4)";
+      c.shadowBlur = 3;
+      c.shadowOffsetY = 1.5;
+
+      // Base circle
+      c.fillStyle = primaryColor;
+      c.beginPath();
+      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+
+      // Outer stripes (perimeter ridges)
+      c.save();
+      c.strokeStyle = accentColor;
+      c.lineWidth = 3.5;
+      c.beginPath();
+      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      c.clip();
+
+      c.beginPath();
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 3) {
+        c.moveTo(cx, cy);
+        c.lineTo(cx + Math.cos(angle) * (rx + 5), cy + Math.sin(angle) * (ry + 5));
+      }
+      c.stroke();
+      c.restore();
+
+      // Inner color cover
+      c.fillStyle = primaryColor;
+      c.beginPath();
+      c.ellipse(cx, cy, rx * 0.72, ry * 0.72, 0, 0, Math.PI * 2);
+      c.fill();
+
+      // Inner white core inlay
+      c.fillStyle = "#ffffff";
+      c.beginPath();
+      c.ellipse(cx, cy, rx * 0.52, ry * 0.52, 0, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = "rgba(15, 23, 42, 0.12)";
+      c.lineWidth = 0.8;
+      c.stroke();
+
+      // Gloss reflection overlay
+      const gloss = c.createLinearGradient(cx, cy - ry, cx, cy + ry);
+      gloss.addColorStop(0, "rgba(255, 255, 255, 0.28)");
+      gloss.addColorStop(0.4, "rgba(255, 255, 255, 0)");
+      gloss.addColorStop(1, "rgba(0, 0, 0, 0.15)");
+      c.fillStyle = gloss;
+      c.beginPath();
+      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      c.fill();
+    };
+
     // Draw stacks of betting chips
     const drawChipsStack = (c: CanvasRenderingContext2D, x: number, y: number, amount: number) => {
       c.save();
       
-      // Stack sizes based on amount
       const chipsCount = Math.min(6, 1 + Math.floor(amount / 50));
-      const chipHeight = 4;
-      
-      // Determine chip primary color
-      let chipColor = "#ef4444"; // Red for $5 - $99
-      if (amount >= 500) chipColor = "#1e293b"; // Black for $500+
-      else if (amount >= 100) chipColor = "#3b82f6"; // Blue for $100+
-      else if (amount >= 25) chipColor = "#10b981"; // Green for $25+
+      const chipHeight = 4.2;
+      const rx = 18;
+      const ry = 9;
       
       for (let i = 0; i < chipsCount; i++) {
-        const cy = y - i * (chipHeight + 1);
+        const cy = y - i * chipHeight;
+        drawSingleChip(c, x, cy, rx, ry, amount);
         
-        // Chip oval
-        c.fillStyle = chipColor;
-        c.strokeStyle = "#ffffff";
-        c.lineWidth = 1;
-        c.beginPath();
-        c.ellipse(x, cy, 20, 10, 0, 0, Math.PI * 2);
-        c.fill();
-        c.stroke();
-
-        // Inner ring stripes
-        c.strokeStyle = "rgba(255,255,255,0.4)";
-        c.setLineDash([2, 2]);
-        c.beginPath();
-        c.ellipse(x, cy, 14, 7, 0, 0, Math.PI * 2);
-        c.stroke();
-        c.setLineDash([]);
+        if (i === chipsCount - 1) {
+          c.fillStyle = "#1e293b";
+          c.font = "bold 9px 'Outfit', sans-serif";
+          c.textAlign = "center";
+          c.textBaseline = "middle";
+          c.fillText(`${amount >= 1000 ? (amount/1000).toFixed(0)+'K' : amount}`, x, cy + 0.5);
+        }
       }
 
-      // Bet Value Box
+      // Bet value display badge
       c.fillStyle = "rgba(15, 23, 42, 0.9)";
+      c.strokeStyle = "rgba(226, 184, 66, 0.45)";
+      c.lineWidth = 1.2;
       c.beginPath();
-      c.roundRect(x - 30, y + 16, 60, 15, 6);
+      c.roundRect(x - 26, y + 15, 52, 14, 5);
       c.fill();
+      c.stroke();
       
       c.fillStyle = "#ffffff";
-      c.font = "bold 11px sans-serif";
+      c.font = "bold 9px sans-serif";
       c.textAlign = "center";
-      c.fillText(`$${amount}`, x, y + 26);
+      c.fillText(`$${amount}`, x, y + 25);
 
       c.restore();
     };

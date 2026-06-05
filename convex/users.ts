@@ -54,3 +54,21 @@ export const completeOnboarding = mutation({
     return userId;
   },
 });
+
+// Query to get top players ordered by balance
+export const getLeaderboard = query({
+  args: {},
+  handler: async (ctx) => {
+    const topUsers = await ctx.db.query("users").collect();
+    
+    return topUsers
+      .filter(u => u.isOnboarded && u.nickname !== undefined)
+      .map(u => ({
+        _id: u._id,
+        nickname: u.nickname!,
+        balance: u.balance ?? 0,
+      }))
+      .sort((a, b) => b.balance - a.balance)
+      .slice(0, 10); // top 10 players
+  },
+});

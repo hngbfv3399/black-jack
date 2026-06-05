@@ -1119,3 +1119,185 @@ h1, h2, h3, h4 {
     margin-bottom: 24px;
   }
 }
+
+/* 3D Tactile Chip Buttons */
+.chip-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px dashed rgba(255, 255, 255, 0.85);
+  color: #0f172a;
+  font-family: var(--font-brand);
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset 0 3px 6px rgba(255, 255, 255, 0.35);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chip-btn:hover:not(:disabled) {
+  transform: translateY(-4px) scale(1.1) rotate(15deg);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6), 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.chip-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.chip-btn.color-10 { background: radial-gradient(circle, #f9fafb 0%, #9ca3af 60%, #4b5563 100%); color: #111827; }
+.chip-btn.color-25 { background: radial-gradient(circle, #f0fdf4 0%, #22c55e 60%, #15803d 100%); color: #ffffff; }
+.chip-btn.color-100 { background: radial-gradient(circle, #eff6ff 0%, #3b82f6 60%, #1d4ed8 100%); color: #ffffff; }
+.chip-btn.color-500 { background: radial-gradient(circle, #faf5ff 0%, #a855f7 60%, #7e22ce 100%); color: #ffffff; }
+.chip-btn.color-1000 { background: radial-gradient(circle, #1e293b 0%, #0f172a 70%, #020617 100%); color: var(--gold); border-color: var(--gold); }
+
+/* Leaderboard Card Styling */
+.leaderboard-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-glass);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  gap: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.leaderboard-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 8px;
+}
+
+.leaderboard-header h4 {
+  margin: 0;
+  font-family: var(--font-brand);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold);
+  text-shadow: 0 0 8px var(--gold-glow);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.leaderboard-header .trophy-icon {
+  color: var(--gold);
+  filter: drop-shadow(0 0 4px var(--gold-glow));
+}
+
+.leaderboard-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 16px 0;
+}
+
+.leaderboard-loading .spinner {
+  animation: spin 1.2s linear infinite;
+}
+
+.leaderboard-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Scrollbar for Leaderboard list */
+.leaderboard-list::-webkit-scrollbar {
+  width: 4px;
+}
+.leaderboard-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.leaderboard-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  font-size: 13px;
+}
+
+.leaderboard-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.05);
+  transform: translateX(2px);
+}
+
+.leaderboard-item.current-user {
+  background: rgba(226, 184, 66, 0.08);
+  border-color: rgba(226, 184, 66, 0.25);
+  box-shadow: inset 0 0 12px rgba(226, 184, 66, 0.05), 0 0 8px rgba(226, 184, 66, 0.1);
+}
+
+.leaderboard-item.current-user .leaderboard-name {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.leaderboard-rank {
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.rank-badge {
+  font-size: 14px;
+}
+
+.rank-badge.rank-other {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.leaderboard-name {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 8px;
+}
+
+.leaderboard-balance {
+  font-weight: 600;
+  color: var(--accent-green);
+  font-family: var(--font-brand);
+}
+
+.current-user .leaderboard-balance {
+  text-shadow: 0 0 6px rgba(142, 222, 66, 0.2);
+}
+
