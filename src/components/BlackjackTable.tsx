@@ -591,33 +591,35 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                     </div>
                   </div>
 
-                  <div className="buttons">
-                    <button
-                      className="btn-danger-outline"
-                      onClick={handleClearBet}
-                      disabled={(currentBet === 0 && sideBetPP === 0 && sideBet213 === 0) || isSubmitting}
-                      style={{ padding: "8px 12px", fontSize: "13px" }}
-                    >
-                      초기화
-                    </button>
-                    {lastBetExists && (
+                  <div className="buttons betting-button-group">
+                    <div className="secondary-bet-buttons">
+                      <button
+                        className="btn-danger-outline"
+                        onClick={handleClearBet}
+                        disabled={(currentBet === 0 && sideBetPP === 0 && sideBet213 === 0) || isSubmitting}
+                        style={{ padding: "8px 12px", fontSize: "13px" }}
+                      >
+                        초기화
+                      </button>
+                      {lastBetExists && (
+                        <button
+                          className="btn-secondary"
+                          onClick={handleRebet}
+                          disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
+                          style={{ padding: "8px 12px", fontSize: "13px", color: "#60a5fa", borderColor: "rgba(96, 165, 250, 0.4)", background: "transparent" }}
+                        >
+                          이전 배팅
+                        </button>
+                      )}
                       <button
                         className="btn-secondary"
-                        onClick={handleRebet}
+                        onClick={handleAllIn}
                         disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
-                        style={{ padding: "8px 12px", fontSize: "13px", color: "#60a5fa", borderColor: "rgba(96, 165, 250, 0.4)", background: "transparent" }}
+                        style={{ padding: "8px 12px", fontSize: "13px", color: "var(--gold)", borderColor: "var(--gold)", background: "transparent" }}
                       >
-                        이전 배팅
+                        올인
                       </button>
-                    )}
-                    <button
-                      className="btn-secondary"
-                      onClick={handleAllIn}
-                      disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
-                      style={{ padding: "8px 12px", fontSize: "13px", color: "var(--gold)", borderColor: "var(--gold)", background: "transparent" }}
-                    >
-                      올인
-                    </button>
+                    </div>
                     <button
                       className="btn-primary confirm-bet-btn"
                       onClick={handleConfirmBet}

@@ -929,6 +929,17 @@ h1, h2, h3, h4 {
   gap: 10px;
 }
 
+.betting-button-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.secondary-bet-buttons {
+  display: flex;
+  gap: 10px;
+}
+
 .confirm-bet-btn {
   padding: 12px 28px;
   font-size: 16px;
@@ -1024,56 +1035,124 @@ h1, h2, h3, h4 {
     padding: 8px 10px;
     gap: 0;
   }
+  .left-controls, .right-controls {
+    gap: 8px;
+  }
   .player-badge-name {
     display: none;
   }
+  .player-badge {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
   .table-header {
-    padding: 8px 12px;
+    padding: 8px 10px;
     margin: 8px 8px 0;
   }
   .table-footer {
-    padding: 12px 16px;
+    padding: 12px 14px;
     margin: 0 8px 8px;
     min-height: 90px;
   }
   .betting-hud {
     gap: 8px;
   }
+  .betting-recommendation-banner {
+    padding: 8px 12px;
+    font-size: 11px;
+    margin-bottom: 8px;
+  }
+  .betting-recommendation-banner .rec-message {
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
   .chip-rack {
-    gap: 8px;
+    gap: 6px;
+    justify-content: center;
   }
   .chip-btn {
-    width: 42px;
-    height: 42px;
+    width: 46px;
+    height: 46px;
     font-size: 11px;
   }
   .bet-actions {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     align-items: center;
   }
-  .bet-actions .buttons {
+  .betting-button-group {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px !important;
+  }
+  .secondary-bet-buttons {
     width: 100%;
     display: flex;
     gap: 8px;
   }
-  .bet-actions .buttons button {
+  .secondary-bet-buttons button {
     flex: 1;
     text-align: center;
     padding: 10px 0;
+    font-size: 12px;
+  }
+  .betting-button-group .confirm-bet-btn {
+    width: 100%;
+    padding: 12px 0 !important;
+    font-size: 14px;
+    font-weight: 700;
   }
   .action-buttons {
     width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
   .action-buttons button {
-    flex: 1;
+    width: 100%;
     padding: 12px 0 !important;
     font-size: 14px;
     text-align: center;
   }
+  .action-buttons button:nth-child(3):last-child {
+    grid-column: span 2;
+  }
   .turn-indicator {
     font-size: 11px;
+  }
+  
+  /* Strategy Modal Mobile Overrides */
+  .strategy-modal-backdrop {
+    padding: 8px;
+  }
+  .strategy-modal {
+    padding: 12px;
+    max-height: 95vh;
+    border-radius: 8px;
+  }
+  .strategy-modal .modal-header {
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+  }
+  .strategy-modal .modal-header h3 {
+    font-size: 16px;
+  }
+  .strategy-intro {
+    font-size: 11px;
+  }
+  .legend {
+    gap: 6px;
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+  .strategy-chart-table th, .strategy-chart-table td {
+    padding: 6px 3px;
+    font-size: 10px;
+  }
+  .strategy-chart-table td.hand-label {
+    padding-left: 6px;
+    width: 60px;
   }
   .lobby-container {
     padding: 12px;
