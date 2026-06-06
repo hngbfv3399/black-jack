@@ -1,4 +1,5 @@
-import React, { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, memo } from "react";
+import { drawCardShape, drawChipsStack } from "../utils/canvasHelpers";
 
 // Canvas roundRect polyfill for older browsers/headless environments
 if (typeof CanvasRenderingContext2D !== "undefined" && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -54,10 +55,19 @@ const getHandValue = (cards: any[]): number => {
   return value;
 };
 
+const getCardCountValue = (card: { value: string }): number => {
+  const v = card.value;
+  if (["2", "3", "4", "5", "6"].includes(v)) return 1;
+  if (["7", "8", "9"].includes(v)) return 0;
+  if (["10", "J", "Q", "K", "A"].includes(v)) return -1;
+  return 0;
+};
+
 interface GameCanvasProps {
   table: any;
   currentUserId: string | null;
   onJoinSeat: (seatIndex: number) => void;
+  onSelectSeat?: (seatIndex: number) => void;
   isStrategyHelperEnabled: boolean;
   isBettingHelperEnabled: boolean;
 }
@@ -77,10 +87,11 @@ interface AnimatedCard {
   hidden?: boolean;
 }
 
-export default function GameCanvas({ 
+const GameCanvas = memo(function GameCanvas({ 
   table, 
   currentUserId, 
   onJoinSeat, 
+  onSelectSeat,
   isStrategyHelperEnabled, 
   isBettingHelperEnabled 
 }: GameCanvasProps) {
@@ -111,19 +122,23 @@ export default function GameCanvas({
   const CARD_WIDTH = 65;
   const CARD_HEIGHT = 95;
 
-  // Calculate coordinates for the 8 seats
+  // Calculate coordinates for the 12 seats
   const getSeatCoords = (index: number) => {
     if (isPortrait) {
-      // 8 seats arranged in a deep U-shape for portrait mode
+      // 12 seats arranged in a deep U-shape for portrait mode
       const portraitCoords = [
-        { x: 140, y: 360 }, // Seat 0 (top-left)
-        { x: 140, y: 520 }, // Seat 1 (mid-left-high)
-        { x: 170, y: 680 }, // Seat 2 (mid-left-low)
-        { x: 270, y: 820 }, // Seat 3 (bottom-left)
-        { x: 530, y: 820 }, // Seat 4 (bottom-right)
-        { x: 630, y: 680 }, // Seat 5 (mid-right-low)
-        { x: 660, y: 520 }, // Seat 6 (mid-right-high)
-        { x: 660, y: 360 }, // Seat 7 (top-right)
+        { x: 140, y: 300 }, // Seat 0
+        { x: 140, y: 420 }, // Seat 1
+        { x: 150, y: 540 }, // Seat 2
+        { x: 170, y: 660 }, // Seat 3
+        { x: 220, y: 780 }, // Seat 4
+        { x: 320, y: 860 }, // Seat 5
+        { x: 480, y: 860 }, // Seat 6
+        { x: 580, y: 780 }, // Seat 7
+        { x: 630, y: 660 }, // Seat 8
+        { x: 650, y: 540 }, // Seat 9
+        { x: 660, y: 420 }, // Seat 10
+        { x: 660, y: 300 }, // Seat 11
       ];
       return {
         x: portraitCoords[index].x,
@@ -132,11 +147,11 @@ export default function GameCanvas({
       };
     }
 
-    // 8 seats arranged from PI * 0.15 to PI * 0.85 (Landscape)
+    // 12 seats arranged from PI * 0.85 to PI * 0.15 (Landscape)
     const startAngle = Math.PI * 0.85;
     const endAngle = Math.PI * 0.15;
     const angleRange = startAngle - endAngle;
-    const angle = startAngle - (index / 7) * angleRange;
+    const angle = startAngle - (index / 11) * angleRange;
     
     const radiusX = 400;
     const radiusY = 220;
@@ -159,23 +174,23 @@ export default function GameCanvas({
         chips: { x: 0, y: -70 }
       };
     }
-    // Left-side seats (0, 1, 2)
-    if (index <= 2) {
+    // Left-side seats (0, 1, 2, 3, 4)
+    if (index <= 4) {
       return {
         card: { x: 55, y: -47 },
         badge: { x: 85, y: -73 },
         chips: { x: 85, y: -5 }
       };
     }
-    // Right-side seats (5, 6, 7)
-    if (index >= 5) {
+    // Right-side seats (7, 8, 9, 10, 11)
+    if (index >= 7) {
       return {
         card: { x: -120, y: -47 },
         badge: { x: -90, y: -73 },
         chips: { x: -90, y: -5 }
       };
     }
-    // Bottom seats (3, 4)
+    // Bottom seats (5, 6)
     return {
       card: { x: -20, y: -95 },
       badge: { x: 0, y: -121 },
@@ -230,7 +245,7 @@ export default function GameCanvas({
             hidden: card.hidden,
           });
           
-          delayAccumulator += 180; // stagger next card by 180ms
+          delayAccumulator += 900; // stagger next card by 900ms for high tension reveal
         }
       }
       lastCardsStateRef.current.seats[seatIdx] = currentCards.length;
@@ -262,7 +277,7 @@ export default function GameCanvas({
             hidden: card.hidden,
           });
           
-          delayAccumulator += 180;
+          delayAccumulator += 900; // stagger split cards by 900ms
         }
       }
       lastSplitCardsStateRef.current[seatIdx] = currentSplitCards.length;
@@ -292,7 +307,7 @@ export default function GameCanvas({
           hidden: card.hidden,
         });
 
-        delayAccumulator += 180;
+        delayAccumulator += 900; // stagger dealer hits by 900ms
       }
       lastCardsStateRef.current.dealer = dealerCards.length;
     }
@@ -381,151 +396,7 @@ export default function GameCanvas({
       animationFrameId = requestAnimationFrame(render);
     };
 
-    // Vector Suit Drawing Utility
-    const drawSuitVector = (c: CanvasRenderingContext2D, x: number, y: number, size: number, suit: string, color: string) => {
-      c.save();
-      c.fillStyle = color;
-      c.beginPath();
-      
-      const cx = x + size / 2;
-      const cy = y + size / 2;
-
-      if (suit === "D" || suit === "♦") {
-        c.moveTo(cx, cy - size / 2);
-        c.lineTo(cx + size / 2, cy);
-        c.lineTo(cx, cy + size / 2);
-        c.lineTo(cx - size / 2, cy);
-        c.closePath();
-        c.fill();
-      } else if (suit === "H" || suit === "♥") {
-        c.moveTo(cx, cy - size / 5);
-        c.bezierCurveTo(cx - size / 3, cy - size / 2 - size / 10, cx - size / 2, cy - size / 10, cx, cy + size / 2.2);
-        c.bezierCurveTo(cx + size / 2, cy - size / 10, cx + size / 3, cy - size / 2 - size / 10, cx, cy - size / 5);
-        c.closePath();
-        c.fill();
-      } else if (suit === "S" || suit === "♠") {
-        // Stem
-        c.moveTo(cx, cy);
-        c.quadraticCurveTo(cx - size / 6, cy + size / 2, cx - size / 4, cy + size / 2);
-        c.lineTo(cx + size / 4, cy + size / 2);
-        c.quadraticCurveTo(cx + size / 6, cy, cx, cy);
-        c.closePath();
-        c.fill();
-        // Main body (upside down heart)
-        c.beginPath();
-        c.moveTo(cx, cy - size / 2.2);
-        c.bezierCurveTo(cx - size / 2, cy - size / 2.2, cx - size / 2.2, cy, cx, cy + size / 6);
-        c.bezierCurveTo(cx + size / 2.2, cy, cx + size / 2, cy - size / 2.2, cx, cy - size / 2.2);
-        c.closePath();
-        c.fill();
-      } else if (suit === "C" || suit === "♣") {
-        // Stem
-        c.moveTo(cx, cy);
-        c.quadraticCurveTo(cx - size / 6, cy + size / 2, cx - size / 4, cy + size / 2);
-        c.lineTo(cx + size / 4, cy + size / 2);
-        c.quadraticCurveTo(cx + size / 6, cy, cx, cy);
-        c.closePath();
-        c.fill();
-        // Circles
-        const r = size / 4;
-        c.beginPath();
-        c.arc(cx, cy - size / 6, r, 0, Math.PI * 2);
-        c.fill();
-        c.beginPath();
-        c.arc(cx - size / 5, cy + size / 10, r, 0, Math.PI * 2);
-        c.fill();
-        c.beginPath();
-        c.arc(cx + size / 5, cy + size / 10, r, 0, Math.PI * 2);
-        c.fill();
-      }
-      c.restore();
-    };
-
-    // Card drawing utility
-    const drawCardShape = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number, isRed: boolean, valueStr: string, suitStr: string, isFaceDown: boolean) => {
-      c.save();
-      // Card Shadow
-      c.shadowColor = "rgba(0, 0, 0, 0.45)";
-      c.shadowBlur = 8;
-      c.shadowOffsetX = 1.5;
-      c.shadowOffsetY = 3.5;
-
-      c.beginPath();
-      c.moveTo(x + radius, y);
-      c.lineTo(x + w - radius, y);
-      c.quadraticCurveTo(x + w, y, x + w, y + radius);
-      c.lineTo(x + w, y + h - radius);
-      c.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-      c.lineTo(x + radius, y + h);
-      c.quadraticCurveTo(x, y + h, x, y + h - radius);
-      c.lineTo(x, y + radius);
-      c.quadraticCurveTo(x, y, x + radius, y);
-      c.closePath();
-
-      if (isFaceDown) {
-        // Draw card back radial gradient
-        const grad = c.createRadialGradient(x + w/2, y + h/2, 5, x + w/2, y + h/2, w);
-        grad.addColorStop(0, "#1e3c72");
-        grad.addColorStop(1, "#0a1931");
-        c.fillStyle = grad;
-        c.fill();
-        
-        c.shadowBlur = 0; // border
-        c.strokeStyle = "#e2b842";
-        c.lineWidth = 2;
-        c.stroke();
-
-        // Elegant filigree pattern on card back
-        c.strokeStyle = "rgba(226, 184, 66, 0.25)";
-        c.lineWidth = 1.2;
-        c.beginPath();
-        c.roundRect(x + 5, y + 5, w - 10, h - 10, radius - 1);
-        c.stroke();
-        
-        c.beginPath();
-        c.arc(x + w/2, y + h/2, 16, 0, Math.PI * 2);
-        c.stroke();
-        c.beginPath();
-        c.arc(x + w/2, y + h/2, 8, 0, Math.PI * 2);
-        c.stroke();
-
-        c.beginPath();
-        c.moveTo(x + 5, y + 5); c.lineTo(x + w - 5, y + h - 5);
-        c.moveTo(x + w - 5, y + 5); c.lineTo(x + 5, y + h - 5);
-        c.stroke();
-
-        drawSuitVector(c, x + w/2 - 6, y + h/2 - 6, 12, "S", "#e2b842");
-      } else {
-        // Draw card front paper gradient
-        const cardGrad = c.createLinearGradient(x, y, x + w, y + h);
-        cardGrad.addColorStop(0, "#ffffff");
-        cardGrad.addColorStop(0.85, "#fefefa");
-        cardGrad.addColorStop(1, "#f4f4ec");
-        c.fillStyle = cardGrad;
-        c.fill();
-        
-        c.shadowBlur = 0; // border
-        c.strokeStyle = "rgba(15, 23, 42, 0.08)";
-        c.lineWidth = 1.2;
-        c.stroke();
-
-        const suitColor = isRed ? "#dc2626" : "#0f172a";
-
-        // Value text
-        c.fillStyle = suitColor;
-        c.font = "bold 15px 'Outfit', sans-serif";
-        c.textAlign = "left";
-        c.textBaseline = "top";
-        c.fillText(valueStr, x + 6, y + 6);
-        
-        // Small top suit
-        drawSuitVector(c, x + 5, y + 23, 11, suitStr, suitColor);
-
-        // Large center suit
-        drawSuitVector(c, x + w / 2 - 16, y + h / 2 - 14, 32, suitStr, suitColor);
-      }
-      c.restore();
-    };
+    // drawSuitVector and drawCardShape extracted to utils/canvasHelpers.ts
 
     // Offscreen felt texture canvas
     if (!feltTextureRef.current) {
@@ -623,7 +494,7 @@ export default function GameCanvas({
       c.stroke();
       
       // 2. Draw Stack of Cards inside (Red back pattern)
-      const maxCards = 156;
+      const maxCards = 312; // 6 decks
       const currentCardsCount = table.deck.length;
       const ratio = Math.max(0, Math.min(1, currentCardsCount / maxCards));
       const stackW = 95 * ratio; // width of card stack shrinks as cards deal
@@ -644,7 +515,7 @@ export default function GameCanvas({
         // Lines on stack to represent individual cards edge
         c.strokeStyle = "rgba(0, 0, 0, 0.25)";
         c.lineWidth = 0.8;
-        const lineInterval = Math.max(2, Math.floor(stackW / 12));
+        const lineInterval = Math.max(2, Math.floor(stackW / 24));
         for (let lx = bx + 10 + lineInterval; lx < bx + 10 + stackW; lx += lineInterval) {
           c.beginPath();
           c.moveTo(lx, by + 10);
@@ -668,22 +539,29 @@ export default function GameCanvas({
       c.lineTo(bx + 12 + stackW, by + bh - 10);
       c.stroke();
 
-      // 4. Card decks indicator text
+      // 4. Card decks indicator text (6 decks)
       c.fillStyle = "#ffffff";
       c.font = "bold 11px sans-serif";
       c.textAlign = "left";
-      c.fillText("카드 슈 (3덱)", bx + 12, by + bh + 15);
+      c.fillText("카드 슈 (6덱)", bx + 12, by + bh + 15);
       
       c.fillStyle = "rgba(255, 255, 255, 0.6)";
       c.font = "10px sans-serif";
-      c.fillText(`${currentCardsCount} / 156`, bx + 12, by + bh + 28);
+      c.fillText(`${currentCardsCount} / 312`, bx + 12, by + bh + 28);
       
       c.restore();
 
       // 5. Card Counting Stats Panel (overlay below shoe)
       if (isBettingHelperEnabled) {
         c.save();
-        const rc = table.runningCount ?? 0;
+        
+        // Compute visual running count based on landed cards only (subtraction logic)
+        let rc = table.runningCount ?? 0;
+        animatedCardsRef.current.forEach(ac => {
+          if (ac.hidden) return;
+          rc -= getCardCountValue(ac);
+        });
+
         const decksRemaining = Math.max(0.1, currentCardsCount / 52);
         const tc = rc / decksRemaining;
 
@@ -858,6 +736,82 @@ export default function GameCanvas({
           c.restore();
         }
 
+        // Draw Side Bets / Insurance status overlay
+        if (seat.sideBetPerfectPairs && seat.sideBetPerfectPairs > 0) {
+          const ppX = coords.x - 32;
+          const ppY = coords.y + 40;
+          c.save();
+          c.fillStyle = "rgba(15, 23, 42, 0.9)";
+          c.strokeStyle = seat.sideBetPerfectPairsStatus === "lost" ? "#ef4444" : 
+                          (seat.sideBetPerfectPairsStatus && seat.sideBetPerfectPairsStatus !== "none" ? "#10b981" : "#e2b842");
+          c.lineWidth = 1;
+          c.beginPath();
+          c.roundRect(ppX - 16, ppY - 8, 32, 16, 4);
+          c.fill();
+          c.stroke();
+          
+          c.fillStyle = "#ffffff";
+          c.font = "bold 8px sans-serif";
+          c.fillText("PP", ppX, ppY - 1);
+          c.fillStyle = "#e2b842";
+          c.fillText(`$${seat.sideBetPerfectPairs}`, ppX, ppY + 6);
+
+          if (seat.sideBetPerfectPairsWinAmount && seat.sideBetPerfectPairsWinAmount > 0) {
+            c.fillStyle = "#10b981";
+            c.font = "bold 9px sans-serif";
+            c.fillText(`+${seat.sideBetPerfectPairsWinAmount}`, ppX, ppY - 12);
+          }
+          c.restore();
+        }
+
+        if (seat.sideBet213 && seat.sideBet213 > 0) {
+          const pokerX = coords.x + 32;
+          const pokerY = coords.y + 40;
+          c.save();
+          c.fillStyle = "rgba(15, 23, 42, 0.9)";
+          c.strokeStyle = seat.sideBet213Status === "lost" ? "#ef4444" : 
+                          (seat.sideBet213Status && seat.sideBet213Status !== "none" ? "#10b981" : "#e2b842");
+          c.lineWidth = 1;
+          c.beginPath();
+          c.roundRect(pokerX - 16, pokerY - 8, 32, 16, 4);
+          c.fill();
+          c.stroke();
+          
+          c.fillStyle = "#ffffff";
+          c.font = "bold 8px sans-serif";
+          c.fillText("21+3", pokerX, pokerY - 1);
+          c.fillStyle = "#e2b842";
+          c.fillText(`$${seat.sideBet213}`, pokerX, pokerY + 6);
+
+          if (seat.sideBet213WinAmount && seat.sideBet213WinAmount > 0) {
+            c.fillStyle = "#10b981";
+            c.font = "bold 9px sans-serif";
+            c.fillText(`+${seat.sideBet213WinAmount}`, pokerX, pokerY - 12);
+          }
+          c.restore();
+        }
+
+        if (seat.insuranceBet && seat.insuranceBet > 0) {
+          const insX = coords.x;
+          const insY = coords.y - 48;
+          c.save();
+          c.fillStyle = "rgba(15, 23, 42, 0.95)";
+          c.strokeStyle = seat.insuranceStatus === "lost" ? "#ef4444" : 
+                          (seat.insuranceStatus === "won" ? "#10b981" : "#e2b842");
+          c.lineWidth = 1.2;
+          c.beginPath();
+          c.roundRect(insX - 22, insY - 8, 44, 16, 4);
+          c.fill();
+          c.stroke();
+          
+          c.fillStyle = "#ffffff";
+          c.font = "bold 8px sans-serif";
+          c.fillText("보험", insX, insY - 1);
+          c.fillStyle = "#e2b842";
+          c.fillText(`$${seat.insuranceBet}`, insX, insY + 6);
+          c.restore();
+        }
+
         // Display Last Action tag (e.g. hit, stand)
         if (seat.lastAction) {
           c.fillStyle = "rgba(255, 255, 255, 0.6)";
@@ -879,108 +833,7 @@ export default function GameCanvas({
       c.restore();
     };
 
-    // Draw single premium 3D casino chip
-    const drawSingleChip = (c: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, amount: number) => {
-      let primaryColor = "#dc2626"; // Red for default
-      let accentColor = "#ffffff";
-      if (amount >= 1000) { primaryColor = "#0f172a"; accentColor = "#e2b842"; } // Black/Gold
-      else if (amount >= 500) { primaryColor = "#7c3aed"; accentColor = "#ffffff"; } // Purple
-      else if (amount >= 100) { primaryColor = "#2563eb"; accentColor = "#ffffff"; } // Blue
-      else if (amount >= 25) { primaryColor = "#16a34a"; accentColor = "#ffffff"; } // Green
-
-      c.save();
-      // Outer shadow
-      c.shadowColor = "rgba(0, 0, 0, 0.4)";
-      c.shadowBlur = 3;
-      c.shadowOffsetY = 1.5;
-
-      // Base circle
-      c.fillStyle = primaryColor;
-      c.beginPath();
-      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      c.fill();
-      c.restore();
-
-      // Outer stripes (perimeter ridges)
-      c.save();
-      c.strokeStyle = accentColor;
-      c.lineWidth = 3.5;
-      c.beginPath();
-      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      c.clip();
-
-      c.beginPath();
-      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 3) {
-        c.moveTo(cx, cy);
-        c.lineTo(cx + Math.cos(angle) * (rx + 5), cy + Math.sin(angle) * (ry + 5));
-      }
-      c.stroke();
-      c.restore();
-
-      // Inner color cover
-      c.fillStyle = primaryColor;
-      c.beginPath();
-      c.ellipse(cx, cy, rx * 0.72, ry * 0.72, 0, 0, Math.PI * 2);
-      c.fill();
-
-      // Inner white core inlay
-      c.fillStyle = "#ffffff";
-      c.beginPath();
-      c.ellipse(cx, cy, rx * 0.52, ry * 0.52, 0, 0, Math.PI * 2);
-      c.fill();
-      c.strokeStyle = "rgba(15, 23, 42, 0.12)";
-      c.lineWidth = 0.8;
-      c.stroke();
-
-      // Gloss reflection overlay
-      const gloss = c.createLinearGradient(cx, cy - ry, cx, cy + ry);
-      gloss.addColorStop(0, "rgba(255, 255, 255, 0.28)");
-      gloss.addColorStop(0.4, "rgba(255, 255, 255, 0)");
-      gloss.addColorStop(1, "rgba(0, 0, 0, 0.15)");
-      c.fillStyle = gloss;
-      c.beginPath();
-      c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      c.fill();
-    };
-
-    // Draw stacks of betting chips
-    const drawChipsStack = (c: CanvasRenderingContext2D, x: number, y: number, amount: number) => {
-      c.save();
-      
-      const chipsCount = Math.min(6, 1 + Math.floor(amount / 50));
-      const chipHeight = 4.2;
-      const rx = 18;
-      const ry = 9;
-      
-      for (let i = 0; i < chipsCount; i++) {
-        const cy = y - i * chipHeight;
-        drawSingleChip(c, x, cy, rx, ry, amount);
-        
-        if (i === chipsCount - 1) {
-          c.fillStyle = "#1e293b";
-          c.font = "bold 9px 'Outfit', sans-serif";
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          c.fillText(`${amount >= 1000 ? (amount/1000).toFixed(0)+'K' : amount}`, x, cy + 0.5);
-        }
-      }
-
-      // Bet value display badge
-      c.fillStyle = "rgba(15, 23, 42, 0.9)";
-      c.strokeStyle = "rgba(226, 184, 66, 0.45)";
-      c.lineWidth = 1.2;
-      c.beginPath();
-      c.roundRect(x - 26, y + 15, 52, 14, 5);
-      c.fill();
-      c.stroke();
-      
-      c.fillStyle = "#ffffff";
-      c.font = "bold 9px sans-serif";
-      c.textAlign = "center";
-      c.fillText(`$${amount}`, x, y + 25);
-
-      c.restore();
-    };
+    // drawSingleChip and drawChipsStack extracted to utils/canvasHelpers.ts
 
     const drawDealerCards = (c: CanvasRenderingContext2D) => {
       const cards = table.dealer?.cards || [];
@@ -1230,8 +1083,8 @@ export default function GameCanvas({
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
-    // Check if player clicked any seat circle
-    for (let i = 0; i < 8; i++) {
+    // Check if player clicked any seat circle (12 seats)
+    for (let i = 0; i < 12; i++) {
       const coords = getSeatCoords(i);
       // Distance calculation
       const dx = clickX - coords.x;
@@ -1242,6 +1095,8 @@ export default function GameCanvas({
         // Clicked!
         if (table.seats[i].userId === null) {
           onJoinSeat(i);
+        } else if (table.seats[i].userId === currentUserId) {
+          onSelectSeat?.(i);
         }
         break;
       }
@@ -1261,7 +1116,7 @@ export default function GameCanvas({
     const mouseY = (e.clientY - rect.top) * scaleY;
 
     let foundSeat: number | null = null;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
       const coords = getSeatCoords(i);
       const dx = mouseX - coords.x;
       const dy = mouseY - coords.y;
@@ -1290,4 +1145,6 @@ export default function GameCanvas({
       />
     </div>
   );
-}
+});
+
+export default GameCanvas;

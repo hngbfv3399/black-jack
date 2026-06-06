@@ -2,168 +2,12 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import GameCanvas from "./GameCanvas";
-import { ArrowLeft, LogOut, Check, Coins, RefreshCw, BookOpen, X, Settings } from "lucide-react";
+import TableHeader from "./TableHeader";
+import StrategyGuideModal from "./StrategyGuideModal";
+import { getBasicStrategyRecommendation } from "../utils/basicStrategy";
+import { Check, Coins, RefreshCw } from "lucide-react";
 
-function getCardValueNum(cardValue: string): number {
-  if (["J", "Q", "K"].includes(cardValue)) return 10;
-  if (cardValue === "A") return 11;
-  return parseInt(cardValue, 10);
-}
-
-function getBasicStrategyRecommendation(playerCards: any[], dealerUpcard: any): "H" | "S" | "D" | "P" {
-  if (!playerCards || playerCards.length < 2 || !dealerUpcard) return "H";
-
-  const dealerVal = getCardValueNum(dealerUpcard.value);
-  const isPair = playerCards.length === 2 && playerCards[0].value === playerCards[1].value;
-  
-  // Calculate if soft hand
-  let hasAce = playerCards.some(c => c.value === "A");
-  let softValue = 0;
-  let hardValue = 0;
-  playerCards.forEach(c => {
-    if (c.value === "A") {
-      softValue += 11;
-      hardValue += 1;
-    } else if (["J", "Q", "K"].includes(c.value)) {
-      softValue += 10;
-      hardValue += 10;
-    } else {
-      const v = parseInt(c.value, 10);
-      softValue += v;
-      hardValue += v;
-    }
-  });
-
-  const isSoft = hasAce && softValue <= 21;
-  const activeValue = isSoft ? softValue : hardValue;
-
-  // 1. Pairs splitting strategy
-  if (isPair) {
-    const pairCardVal = playerCards[0].value;
-    if (pairCardVal === "A" || pairCardVal === "8") return "P"; // Always split Aces & 8s
-    if (pairCardVal === "9") {
-      return (dealerVal >= 2 && dealerVal <= 9 && dealerVal !== 7) ? "P" : "S";
-    }
-    if (pairCardVal === "7" || pairCardVal === "3" || pairCardVal === "2") {
-      return (dealerVal >= 2 && dealerVal <= 7) ? "P" : "H";
-    }
-    if (pairCardVal === "6") {
-      return (dealerVal >= 2 && dealerVal <= 6) ? "P" : "H";
-    }
-    if (pairCardVal === "5") {
-      return (dealerVal >= 2 && dealerVal <= 9) ? "D" : "H"; // Double 5s
-    }
-    if (pairCardVal === "4") {
-      return (dealerVal === 5 || dealerVal === 6) ? "P" : "H";
-    }
-    // 10s, J, Q, K
-    return "S"; // Never split 10s
-  }
-
-  // 2. Soft hands strategy
-  if (isSoft) {
-    const otherVal = activeValue - 11;
-    if (otherVal >= 8) return "S";
-    if (otherVal === 7) {
-      if (dealerVal >= 2 && dealerVal <= 6) return "D";
-      if (dealerVal === 7 || dealerVal === 8) return "S";
-      return "H";
-    }
-    if (otherVal === 6) {
-      return (dealerVal >= 3 && dealerVal <= 6) ? "D" : "H";
-    }
-    if (otherVal === 5 || otherVal === 4) {
-      return (dealerVal >= 4 && dealerVal <= 6) ? "D" : "H";
-    }
-    if (otherVal === 3 || otherVal === 2) {
-      return (dealerVal === 5 || dealerVal === 6) ? "D" : "H";
-    }
-  }
-
-  // 3. Hard hands strategy
-  if (activeValue >= 17) return "S";
-  if (activeValue === 16 || activeValue === 15 || activeValue === 14 || activeValue === 13) {
-    return (dealerVal >= 2 && dealerVal <= 6) ? "S" : "H";
-  }
-  if (activeValue === 12) {
-    return (dealerVal >= 4 && dealerVal <= 6) ? "S" : "H";
-  }
-  if (activeValue === 11) return "D";
-  if (activeValue === 10) {
-    return (dealerVal >= 2 && dealerVal <= 9) ? "D" : "H";
-  }
-  if (activeValue === 9) {
-    return (dealerVal >= 3 && dealerVal <= 6) ? "D" : "H";
-  }
-  return "H"; // 8 and under
-}
-
-const renderHardRows = () => {
-  const data = [
-    { label: "17+", cells: ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"] },
-    { label: "16", cells: ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"] },
-    { label: "15", cells: ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"] },
-    { label: "14", cells: ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"] },
-    { label: "13", cells: ["S", "S", "S", "S", "S", "H", "H", "H", "H", "H"] },
-    { label: "12", cells: ["H", "H", "S", "S", "S", "H", "H", "H", "H", "H"] },
-    { label: "11", cells: ["D", "D", "D", "D", "D", "D", "D", "D", "D", "H"] },
-    { label: "10", cells: ["D", "D", "D", "D", "D", "D", "D", "D", "H", "H"] },
-    { label: "9", cells: ["H", "D", "D", "D", "D", "H", "H", "H", "H", "H"] },
-    { label: "5-8", cells: ["H", "H", "H", "H", "H", "H", "H", "H", "H", "H"] },
-  ];
-  return data.map((row, idx) => (
-    <tr key={idx}>
-      <td className="hand-label hard">{row.label}</td>
-      {row.cells.map((cell, cIdx) => (
-        <td key={cIdx} className={`cell-action color-${cell}`}>{cell}</td>
-      ))}
-    </tr>
-  ));
-};
-
-const renderSoftRows = () => {
-  const data = [
-    { label: "A,9", cells: ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"] },
-    { label: "A,8", cells: ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"] },
-    { label: "A,7", cells: ["D", "D", "D", "D", "D", "S", "S", "H", "H", "H"] },
-    { label: "A,6", cells: ["H", "D", "D", "D", "D", "H", "H", "H", "H", "H"] },
-    { label: "A,5", cells: ["H", "H", "D", "D", "D", "H", "H", "H", "H", "H"] },
-    { label: "A,4", cells: ["H", "H", "D", "D", "D", "H", "H", "H", "H", "H"] },
-    { label: "A,3", cells: ["H", "H", "H", "D", "D", "H", "H", "H", "H", "H"] },
-    { label: "A,2", cells: ["H", "H", "H", "D", "D", "H", "H", "H", "H", "H"] },
-  ];
-  return data.map((row, idx) => (
-    <tr key={idx}>
-      <td className="hand-label soft">{row.label}</td>
-      {row.cells.map((cell, cIdx) => (
-        <td key={cIdx} className={`cell-action color-${cell}`}>{cell}</td>
-      ))}
-    </tr>
-  ));
-};
-
-const renderPairRows = () => {
-  const data = [
-    { label: "A,A", cells: ["P", "P", "P", "P", "P", "P", "P", "P", "P", "P"] },
-    { label: "10,10", cells: ["S", "S", "S", "S", "S", "S", "S", "S", "S", "S"] },
-    { label: "9,9", cells: ["P", "P", "P", "P", "P", "S", "P", "P", "S", "S"] },
-    { label: "8,8", cells: ["P", "P", "P", "P", "P", "P", "P", "P", "P", "P"] },
-    { label: "7,7", cells: ["P", "P", "P", "P", "P", "P", "H", "H", "H", "H"] },
-    { label: "6,6", cells: ["P", "P", "P", "P", "P", "H", "H", "H", "H", "H"] },
-    { label: "5,5", cells: ["D", "D", "D", "D", "D", "D", "D", "D", "H", "H"] },
-    { label: "4,4", cells: ["H", "H", "H", "P", "P", "H", "H", "H", "H", "H"] },
-    { label: "3,3", cells: ["P", "P", "P", "P", "P", "P", "H", "H", "H", "H"] },
-    { label: "2,2", cells: ["P", "P", "P", "P", "P", "P", "H", "H", "H", "H"] },
-  ];
-  return data.map((row, idx) => (
-    <tr key={idx}>
-      <td className="hand-label pair">{row.label}</td>
-      {row.cells.map((cell, cIdx) => (
-        <td key={cIdx} className={`cell-action color-${cell}`}>{cell === "P" ? "SP" : cell}</td>
-      ))}
-    </tr>
-  ));
-};
+// Extracted strategy recommendations and helper render logic to utils/basicStrategy.tsx and components/StrategyGuideModal.tsx
 
 interface BlackjackTableProps {
   tableId: any;
@@ -180,11 +24,17 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   const placeBet = useMutation(api.blackjack.placeBet);
   const playAction = useMutation(api.blackjack.playAction);
   const refillBalance = useMutation(api.users.refillBalance);
+  const setInsuranceChoice = useMutation(api.blackjack.setInsuranceChoice);
 
   const table = dbTable;
 
   // Betting states
   const [currentBet, setCurrentBet] = useState<number>(0);
+  const [sideBetPP, setSideBetPP] = useState<number>(0);
+  const [sideBet213, setSideBet213] = useState<number>(0);
+  const [betTarget, setBetTarget] = useState<"main" | "pp" | "213">("main");
+  const [selectedBettingSeatIndex, setSelectedBettingSeatIndex] = useState<number | null>(null);
+
   const [betError, setBetError] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isRefilling, setIsRefilling] = useState<boolean>(false);
@@ -195,7 +45,9 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   const [isBettingHelperEnabled, setIsBettingHelperEnabled] = useState<boolean>(() => {
     return localStorage.getItem("blackjack_betting_helper") !== "false";
   });
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [lastBetExists, setLastBetExists] = useState<boolean>(() => {
+    return !!localStorage.getItem(`last_bet_${user._id}`);
+  });
 
   const handleRefill = async () => {
     setIsRefilling(true);
@@ -208,13 +60,59 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     }
   };
 
+  const handleInsuranceChoice = async (seatIdx: number, buy: boolean) => {
+    setIsSubmitting(true);
+    try {
+      await setInsuranceChoice({ tableId, seatIndex: seatIdx, buy });
+    } catch (err: any) {
+      alert(err.message || "보험 선택에 실패했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-  // Find player seat
-  const playerSeatIndex = table
-    ? table.seats.findIndex((s: any) => s.userId === user._id)
-    : -1;
-  const isSeated = playerSeatIndex !== -1;
-  const playerSeat = isSeated && table ? table.seats[playerSeatIndex] : null;
+  // Find player seats (up to 3)
+  const playerSeatIndices = table
+    ? table.seats
+        .map((s: any, idx: number) => ({ s, idx }))
+        .filter((item: any) => item.s.userId === user._id)
+        .map((item: any) => item.idx)
+    : [];
+  const isSeated = playerSeatIndices.length > 0;
+
+  // Auto-focus selected betting seat
+  useEffect(() => {
+    if (table && table.status === "betting") {
+      const mySeats = table.seats
+        .map((s: any, idx: number) => ({ s, idx }))
+        .filter((item: any) => item.s.userId === user._id);
+      
+      const unbetSeat = mySeats.find((item: any) => item.s.bet === 0);
+      if (unbetSeat) {
+        setSelectedBettingSeatIndex(unbetSeat.idx);
+      } else if (mySeats.length > 0 && selectedBettingSeatIndex === null) {
+        setSelectedBettingSeatIndex(mySeats[0].idx);
+      }
+    } else {
+      setSelectedBettingSeatIndex(null);
+    }
+  }, [table?.status, table?.seats, user._id]);
+
+  // Handle turn selection or betting selection
+  const isMyTurn = table && table.status === "playing" && playerSeatIndices.includes(table.activeSeatIndex) && isSeated;
+  const playerSeatIndex = isMyTurn 
+    ? table.activeSeatIndex 
+    : (selectedBettingSeatIndex !== null && playerSeatIndices.includes(selectedBettingSeatIndex)
+        ? selectedBettingSeatIndex 
+        : (playerSeatIndices[0] ?? -1));
+  const playerSeat = playerSeatIndex !== -1 && table ? table.seats[playerSeatIndex] : null;
+
+  // Filter seats where player has insurance decision pending
+  const myInsurancePendingSeats = table
+    ? table.seats
+        .map((s: any, idx: number) => ({ s, idx }))
+        .filter((item: any) => item.s.userId === user._id && item.s.bet > 0 && (!item.s.insuranceStatus || item.s.insuranceStatus === "none"))
+    : [];
 
   // Calculate Card Counting metrics for betting recommendation
   let trueCount = 0;
@@ -252,13 +150,12 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     }
   }
 
-  // Turn check
-  const isMyTurn = table && table.status === "playing" && table.activeSeatIndex === playerSeatIndex && isSeated;
-
   // Clear bet if table status shifts or player stands up
   useEffect(() => {
     if (table && table.status !== "betting") {
       setCurrentBet(0);
+      setSideBetPP(0);
+      setSideBet213(0);
       setBetError("");
     }
   }, [table?.status]);
@@ -315,35 +212,124 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     onBackToLobby();
   };
 
+  // Calculate dynamic chip values rack
+  let chipMultiplier = 1;
+  const playerBal = playerSeat ? playerSeat.balance : (user.balance ?? 3000);
+  if (playerBal >= 125000) {
+    chipMultiplier = 125;
+  } else if (playerBal >= 25000) {
+    chipMultiplier = 25;
+  } else if (playerBal >= 5000) {
+    chipMultiplier = 5;
+  }
+  const baseChipsList = [10, 50, 100, 500, 1000];
+  const activeChipsList = baseChipsList.map(c => c * chipMultiplier);
+
   // Betting Actions
   const handleAddChip = (val: number) => {
     const seatObj = playerSeat;
     if (!seatObj) return;
-    const nextBet = currentBet + val;
-    if (nextBet > seatObj.balance) {
+
+    const totalWager = currentBet + sideBetPP + sideBet213;
+    if (totalWager + val > seatObj.balance) {
       setBetError("베팅할 칩이 부족합니다.");
       return;
     }
     setBetError("");
-    setCurrentBet(nextBet);
+
+    if (betTarget === "main") {
+      setCurrentBet(prev => prev + val);
+    } else if (betTarget === "pp") {
+      setSideBetPP(prev => prev + val);
+    } else {
+      setSideBet213(prev => prev + val);
+    }
   };
 
   const handleClearBet = () => {
     setCurrentBet(0);
+    setSideBetPP(0);
+    setSideBet213(0);
     setBetError("");
+  };
+
+  const handleAllIn = () => {
+    const seatObj = playerSeat;
+    if (!seatObj) return;
+    const remainingBalance = seatObj.balance;
+    if (remainingBalance <= 0) {
+      setBetError("베팅할 칩이 부족합니다.");
+      return;
+    }
+    setBetError("");
+    if (betTarget === "main") {
+      setCurrentBet(remainingBalance - sideBetPP - sideBet213);
+    } else if (betTarget === "pp") {
+      setSideBetPP(remainingBalance - currentBet - sideBet213);
+    } else {
+      setSideBet213(remainingBalance - currentBet - sideBetPP);
+    }
   };
 
   const handleConfirmBet = async () => {
     const seatObj = playerSeat;
-    if (currentBet <= 0 || !seatObj) return;
+    if (!seatObj || playerSeatIndex === -1) return;
+    if (currentBet <= 0) {
+      setBetError("메인 베팅 금액이 필요합니다.");
+      return;
+    }
     setIsSubmitting(true);
     
     try {
-      await placeBet({ tableId, seatIndex: playerSeatIndex, amount: currentBet });
+      await placeBet({
+        tableId,
+        seatIndex: playerSeatIndex,
+        amount: currentBet,
+        sideBetPerfectPairs: sideBetPP,
+        sideBet213: sideBet213,
+      });
+
+      // Store the bet as previous bet before clearing!
+      localStorage.setItem(`last_bet_${user._id}`, JSON.stringify({
+        amount: currentBet,
+        sideBetPerfectPairs: sideBetPP,
+        sideBet213: sideBet213
+      }));
+      setLastBetExists(true);
+
+      setCurrentBet(0);
+      setSideBetPP(0);
+      setSideBet213(0);
+      setBetError("");
     } catch (err: any) {
       setBetError(err.message || "베팅 확정에 실패했습니다.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleRebet = () => {
+    const seatObj = playerSeat;
+    if (!seatObj) return;
+
+    try {
+      const stored = localStorage.getItem(`last_bet_${user._id}`);
+      if (!stored) return;
+
+      const lastBet = JSON.parse(stored);
+      const totalWager = (lastBet.amount ?? 0) + (lastBet.sideBetPerfectPairs ?? 0) + (lastBet.sideBet213 ?? 0);
+
+      if (totalWager > seatObj.balance) {
+        setBetError("베팅 재현을 위한 칩이 부족합니다.");
+        return;
+      }
+
+      setBetError("");
+      setCurrentBet(lastBet.amount ?? 0);
+      setSideBetPP(lastBet.sideBetPerfectPairs ?? 0);
+      setSideBet213(lastBet.sideBet213 ?? 0);
+    } catch (e) {
+      setBetError("이전 베팅 정보를 불러오는 데 실패했습니다.");
     }
   };
 
@@ -364,178 +350,32 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     <div className="table-container" style={{ display: "flex", flexDirection: "row", width: "100%", overflow: "hidden" }}>
       {/* Table Side */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh", position: "relative" }}>
-        {/* HUD Header */}
-        <header className="table-header glass">
-          <div className="left-controls">
-            <button className="btn-secondary back-btn" onClick={handleBackToLobby}>
-              <ArrowLeft size={16} />
-              <span className="btn-text">로비</span>
-            </button>
-            <div className="table-info">
-              <span className="name">{table.name}</span>
-              <span className="round">라운드 {table.roundNumber}</span>
-            </div>
-          </div>
-
-          <div className="right-controls">
-            {isSeated && (
-              <button className="btn-danger stand-up-btn" onClick={handleLeaveSeat}>
-                <LogOut size={14} />
-                <span className="btn-text">일어나기</span>
-              </button>
-            )}
-            {!isSeated && (user.balance ?? 0) < 1000 && (
-              <button 
-                className="btn-primary refill-btn animate-pulse" 
-                onClick={handleRefill}
-                disabled={isRefilling}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                  boxShadow: "0 2px 6px rgba(245, 158, 11, 0.4)",
-                  border: "none",
-                  color: "#fff",
-                  fontWeight: "bold",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  marginRight: "8px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}
-              >
-                <Coins size={12} />
-                {isRefilling ? "충전 중..." : "무료 충전"}
-              </button>
-            )}
-            
-            {/* Settings Cog Popover Dropdown */}
-            <div style={{ position: "relative" }}>
-              <button 
-                className={`btn-secondary strategy-btn ${isSettingsOpen ? "active" : ""}`}
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "8px 12px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                  background: isSettingsOpen ? "rgba(226, 184, 66, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                  borderColor: isSettingsOpen ? "var(--gold)" : "rgba(255, 255, 255, 0.1)"
-                }}
-              >
-                <Settings size={14} className={isSettingsOpen ? "gold" : ""} />
-                <span className="btn-text">게임 설정</span>
-              </button>
-              
-              {isSettingsOpen && (
-                <div className="glass settings-dropdown" style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 8px)",
-                  width: "220px",
-                  padding: "16px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                  zIndex: 100,
-                  background: "rgba(15, 23, 42, 0.95)",
-                  border: "1px solid rgba(226, 184, 66, 0.3)",
-                  boxShadow: "0 10px 25px rgba(0,0,0,0.6)"
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "8px" }}>
-                    <span style={{ fontSize: "13px", fontWeight: "bold", color: "var(--gold)" }}>추천 시스템 설정</span>
-                    <button onClick={() => setIsSettingsOpen(false)} style={{ background: "transparent", border: "none", color: "var(--text-secondary)", cursor: "pointer", display: "flex", padding: 0 }}><X size={14} /></button>
-                  </div>
-                  
-                  {/* Strategy recommendation toggle */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "12px" }}>기본 전략 추천</span>
-                    <button
-                      onClick={() => {
-                        const nextVal = !isStrategyHelperEnabled;
-                        setIsStrategyHelperEnabled(nextVal);
-                        localStorage.setItem("blackjack_strategy_helper", String(nextVal));
-                      }}
-                      style={{
-                        padding: "4px 10px",
-                        fontSize: "11px",
-                        cursor: "pointer",
-                        border: "1px solid",
-                        borderColor: isStrategyHelperEnabled ? "var(--gold)" : "rgba(255,255,255,0.15)",
-                        color: isStrategyHelperEnabled ? "var(--gold)" : "var(--text-secondary)",
-                        background: isStrategyHelperEnabled ? "rgba(226, 184, 66, 0.15)" : "transparent",
-                        fontWeight: "bold",
-                        borderRadius: "4px"
-                      }}
-                    >
-                      {isStrategyHelperEnabled ? "켜짐" : "꺼짐"}
-                    </button>
-                  </div>
-
-                  {/* Betting recommendation toggle */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "12px" }}>카운팅 베팅 추천</span>
-                    <button
-                      onClick={() => {
-                        const nextVal = !isBettingHelperEnabled;
-                        setIsBettingHelperEnabled(nextVal);
-                        localStorage.setItem("blackjack_betting_helper", String(nextVal));
-                      }}
-                      style={{
-                        padding: "4px 10px",
-                        fontSize: "11px",
-                        cursor: "pointer",
-                        border: "1px solid",
-                        borderColor: isBettingHelperEnabled ? "var(--gold)" : "rgba(255,255,255,0.15)",
-                        color: isBettingHelperEnabled ? "var(--gold)" : "var(--text-secondary)",
-                        background: isBettingHelperEnabled ? "rgba(226, 184, 66, 0.15)" : "transparent",
-                        fontWeight: "bold",
-                        borderRadius: "4px"
-                      }}
-                    >
-                      {isBettingHelperEnabled ? "켜짐" : "꺼짐"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button 
-              className="btn-secondary strategy-btn" 
-              onClick={() => setIsStrategyOpen(true)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 12px",
-                fontSize: "12px",
-                cursor: "pointer",
-                background: "rgba(226, 184, 66, 0.1)",
-                borderColor: "rgba(226, 184, 66, 0.2)"
-              }}
-            >
-              <BookOpen size={14} className="gold" />
-              <span className="btn-text">기본 전략 가이드</span>
-            </button>
-            <div className="player-badge">
-              <Coins size={14} className="gold" />
-              <span>
-                <span className="player-badge-name">{user.nickname}: </span>
-                <strong>${playerSeat ? playerSeat.balance.toLocaleString() : user.balance.toLocaleString()}</strong>
-              </span>
-            </div>
-          </div>
-        </header>
-
-        {/* Primary Canvas Area */}
+        <TableHeader
+          tableName={table.name}
+          roundNumber={table.roundNumber}
+          isSeated={isSeated}
+          user={user}
+          playerSeat={playerSeat}
+          isRefilling={isRefilling}
+          onLeaveSeat={handleLeaveSeat}
+          onRefill={handleRefill}
+          onBackToLobby={handleBackToLobby}
+          isStrategyHelperEnabled={isStrategyHelperEnabled}
+          setIsStrategyHelperEnabled={setIsStrategyHelperEnabled}
+          isBettingHelperEnabled={isBettingHelperEnabled}
+          setIsBettingHelperEnabled={setIsBettingHelperEnabled}
+          onOpenStrategyGuide={() => setIsStrategyOpen(true)}
+        />
         <div className="gameplay-area">
           <GameCanvas 
             table={table} 
             currentUserId={user._id} 
             onJoinSeat={handleJoinSeat} 
+            onSelectSeat={(seatIdx) => {
+              if (table && table.status === "betting" && table.seats[seatIdx].userId === user._id) {
+                setSelectedBettingSeatIndex(seatIdx);
+              }
+            }}
             isStrategyHelperEnabled={isStrategyHelperEnabled}
             isBettingHelperEnabled={isBettingHelperEnabled}
           />
@@ -587,12 +427,45 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
             playerSeat && playerSeat.bet > 0 ? (
               <div className="bet-confirmed glass-green">
                 <Check size={20} className="check-icon" />
-                <p>베팅액 <strong>${playerSeat.bet}</strong>이 확정되었습니다. 카드가 딜링되기를 기다리는 중...</p>
+                <p>{playerSeatIndex + 1}번 자리 베팅액 <strong>${playerSeat.bet}</strong>이 확정되었습니다. 카드가 딜링되기를 기다리는 중...</p>
               </div>
             ) : (
-              <div className="betting-hud animate-slide-up">
-                <div className="hud-label">
-                  <span>베팅을 진행해주세요</span>
+              <div className="betting-hud animate-slide-up" style={{ width: "100%" }}>
+                {/* Seat selector header */}
+                {playerSeatIndices.length > 1 && (
+                  <div className="seat-tabs" style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
+                    {playerSeatIndices.map((idx) => {
+                      const seatObj = table.seats[idx];
+                      const hasBet = seatObj.bet > 0;
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setSelectedBettingSeatIndex(idx);
+                            setBetError("");
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            borderRadius: "6px",
+                            border: "1px solid",
+                            background: selectedBettingSeatIndex === idx ? "rgba(226, 184, 66, 0.2)" : "rgba(255,255,255,0.04)",
+                            borderColor: selectedBettingSeatIndex === idx ? "var(--gold)" : "rgba(255,255,255,0.1)",
+                            color: selectedBettingSeatIndex === idx ? "var(--gold)" : "white",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {idx + 1}번 자리 {hasBet ? `($${seatObj.bet})` : "(베팅 대기)"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="hud-label" style={{ marginTop: "4px" }}>
+                  <span>{playerSeatIndex + 1}번 자리 베팅을 진행해주세요</span>
                   <span className="balance-hint">보유 칩: ${playerSeat?.balance.toLocaleString()}</span>
                 </div>
 
@@ -606,7 +479,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                       </div>
                       <div className="rec-action-group">
                         <span className="rec-tc">
-                          (TC: {trueCount >= 0 ? "+" : ""}{trueCount.toFixed(1)})
+                           (TC: {trueCount >= 0 ? "+" : ""}{trueCount.toFixed(1)})
                         </span>
                         <button
                           onClick={() => {
@@ -628,39 +501,128 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                   </div>
                 )}
                 
-                {/* Tactile Chip selectors */}
-                <div className="chip-rack">
-                  {[10, 25, 100, 500, 1000].map((val) => (
-                    <button
-                      key={val}
-                      className={`chip-btn color-${val}`}
-                      onClick={() => handleAddChip(val)}
-                      disabled={isSubmitting || (playerSeat ? val > playerSeat.balance : false)}
-                    >
-                      ${val}
-                    </button>
-                  ))}
+                {/* Bet Target tab selector */}
+                <div className="bet-target-selector" style={{ display: "flex", gap: "8px", margin: "8px 0" }}>
+                  <button
+                    onClick={() => setBetTarget("main")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      fontSize: "12px",
+                      borderRadius: "6px",
+                      border: "1px solid",
+                      background: betTarget === "main" ? "rgba(59, 130, 246, 0.2)" : "rgba(255,255,255,0.03)",
+                      borderColor: betTarget === "main" ? "#3b82f6" : "rgba(255,255,255,0.1)",
+                      color: betTarget === "main" ? "#60a5fa" : "white",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    메인 베팅 (${currentBet})
+                  </button>
+                  <button
+                    onClick={() => setBetTarget("pp")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      fontSize: "12px",
+                      borderRadius: "6px",
+                      border: "1px solid",
+                      background: betTarget === "pp" ? "rgba(16, 185, 129, 0.2)" : "rgba(255,255,255,0.03)",
+                      borderColor: betTarget === "pp" ? "#10b981" : "rgba(255,255,255,0.1)",
+                      color: betTarget === "pp" ? "#34d399" : "white",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    퍼펙트 페어 (${sideBetPP})
+                  </button>
+                  <button
+                    onClick={() => setBetTarget("213")}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      fontSize: "12px",
+                      borderRadius: "6px",
+                      border: "1px solid",
+                      background: betTarget === "213" ? "rgba(245, 158, 11, 0.2)" : "rgba(255,255,255,0.03)",
+                      borderColor: betTarget === "213" ? "#f59e0b" : "rgba(255,255,255,0.1)",
+                      color: betTarget === "213" ? "#fbbf24" : "white",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    21+3 포커 (${sideBet213})
+                  </button>
+                </div>
+                
+                {/* Tactile Chip selectors (scaled dynamically) */}
+                <div className="chip-rack" style={{ flexWrap: "wrap", gap: "8px" }}>
+                  {activeChipsList.map((val, idx) => {
+                    const chipColors = ["gray", "green", "blue", "purple", "black"];
+                    return (
+                      <button
+                        key={val}
+                        className={`chip-btn color-${chipColors[idx]}`}
+                        onClick={() => handleAddChip(val)}
+                        disabled={isSubmitting || (playerSeat ? val > playerSeat.balance : false)}
+                        style={{
+                          width: "50px",
+                          height: "50px",
+                          fontSize: "12px",
+                        }}
+                      >
+                        ${val >= 1000 ? (val/1000).toFixed(0) + 'K' : val}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Bet values & Confirmations */}
-                <div className="bet-actions">
-                  <div className="bet-display">
-                    <span className="label">현재 베팅금:</span>
-                    <span className="val">${currentBet}</span>
+                <div className="bet-actions" style={{ marginTop: "4px" }}>
+                  <div className="bet-display" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                    <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                      총 베팅금: <strong style={{ color: "var(--gold)" }}>${currentBet + sideBetPP + sideBet213}</strong>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "white" }}>
+                      메인: <strong style={{ color: "#60a5fa" }}>${currentBet}</strong> / 
+                      PP: <strong style={{ color: "#34d399" }}>${sideBetPP}</strong> / 
+                      21+3: <strong style={{ color: "#fbbf24" }}>${sideBet213}</strong>
+                    </div>
                   </div>
 
                   <div className="buttons">
                     <button
                       className="btn-danger-outline"
                       onClick={handleClearBet}
-                      disabled={currentBet === 0 || isSubmitting}
+                      disabled={(currentBet === 0 && sideBetPP === 0 && sideBet213 === 0) || isSubmitting}
+                      style={{ padding: "8px 12px", fontSize: "13px" }}
                     >
                       초기화
+                    </button>
+                    {lastBetExists && (
+                      <button
+                        className="btn-secondary"
+                        onClick={handleRebet}
+                        disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
+                        style={{ padding: "8px 12px", fontSize: "13px", color: "#60a5fa", borderColor: "rgba(96, 165, 250, 0.4)", background: "transparent" }}
+                      >
+                        이전 배팅
+                      </button>
+                    )}
+                    <button
+                      className="btn-secondary"
+                      onClick={handleAllIn}
+                      disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
+                      style={{ padding: "8px 12px", fontSize: "13px", color: "var(--gold)", borderColor: "var(--gold)", background: "transparent" }}
+                    >
+                      올인
                     </button>
                     <button
                       className="btn-primary confirm-bet-btn"
                       onClick={handleConfirmBet}
                       disabled={currentBet === 0 || isSubmitting}
+                      style={{ padding: "8px 16px", fontSize: "13px" }}
                     >
                       베팅 확정
                     </button>
@@ -691,7 +653,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                 <div className="action-hud animate-slide-up">
                   <div className="hud-status-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: "12px" }}>
                     <div className="turn-indicator">
-                      당신의 차례입니다! {playerSeat?.splitCards && `(핸드 ${activeHandIndex + 1})`}
+                      {playerSeatIndex + 1}번 자리 차례입니다! {playerSeat?.splitCards && `(핸드 ${activeHandIndex + 1})`}
                     </div>
                     {isStrategyHelperEnabled && advice && (
                       <div className="strategy-advisor animate-fade-in" style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.05)", padding: "4px 10px", borderRadius: "6px", border: "1px solid rgba(226, 184, 66, 0.15)" }}>
@@ -752,6 +714,53 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                 </p>
               </div>
             )
+          ) : table.status === "insurance" ? (
+            // Insurance Phase HUD
+            myInsurancePendingSeats.length > 0 ? (
+              <div className="insurance-hud animate-slide-up" style={{ width: "100%", maxWidth: "600px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <h4 style={{ color: "var(--gold)", fontWeight: "bold", margin: 0, fontSize: "14px", textAlign: "center" }}>
+                    딜러의 오픈 카드가 에이스(Ace)입니다.
+                  </h4>
+                  <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: 0, textAlign: "center" }}>
+                    보험은 메인 베팅금의 1/2을 지불하며, 딜러가 블랙잭일 경우 2:1로 보상받습니다 (원금 보존).
+                  </p>
+                </div>
+                
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {myInsurancePendingSeats.map((item) => {
+                    const insCost = Math.floor(item.s.bet / 2);
+                    return (
+                      <div key={item.idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <span style={{ fontSize: "12px", fontWeight: "bold" }}>{item.idx + 1}번 자리 (보험료: ${insCost})</span>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            className="btn-danger-outline"
+                            style={{ padding: "4px 12px", fontSize: "12px", borderRadius: "4px", cursor: "pointer" }}
+                            onClick={() => handleInsuranceChoice(item.idx, false)}
+                            disabled={isSubmitting}
+                          >
+                            보험 거절
+                          </button>
+                          <button
+                            className="btn-primary"
+                            style={{ padding: "4px 12px", fontSize: "12px", borderRadius: "4px", cursor: "pointer" }}
+                            onClick={() => handleInsuranceChoice(item.idx, true)}
+                            disabled={isSubmitting || item.s.balance < insCost}
+                          >
+                            보험 구매 (${insCost})
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="footer-message">
+                <p>다른 플레이어들의 인셔런스 선택을 기다리는 중...</p>
+              </div>
+            )
           ) : (
             // Dealer Turn / Settle Phase HUD
             <div className="footer-message">
@@ -763,54 +772,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
         </footer>
       </div>
 
-      {isStrategyOpen && (
-        <div className="strategy-modal-backdrop" onClick={() => setIsStrategyOpen(false)}>
-          <div className="strategy-modal glass animate-scale-up" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>블랙잭 기본 전략 가이드</h3>
-              <button className="btn-close" onClick={() => setIsStrategyOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            
-            <div className="modal-body">
-              <p className="strategy-intro">
-                이 가이드는 플레이어의 카드 합계(왼쪽 열)와 딜러의 오픈 카드(상단 행)를 바탕으로 수학적으로 가장 유리한 선택을 보여줍니다.
-              </p>
-              
-              <div className="legend">
-                <span className="legend-item"><span className="legend-color color-H">H</span> 히트</span>
-                <span className="legend-item"><span className="legend-color color-S">S</span> 스탠드</span>
-                <span className="legend-item"><span className="legend-color color-D">D</span> 더블 다운</span>
-                <span className="legend-item"><span className="legend-color color-P">SP</span> 스플릿</span>
-              </div>
-
-              <div className="strategy-chart-wrapper">
-                <table className="strategy-chart-table">
-                  <thead>
-                    <tr>
-                      <th className="sticky-corner">플레이어 핸드</th>
-                      {["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"].map(val => (
-                        <th key={val}>{val}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="section-row"><td colSpan={11}>하드 핸드 (에이스 미포함)</td></tr>
-                    {renderHardRows()}
-                    
-                    <tr className="section-row"><td colSpan={11}>소프트 핸드 (에이스 포함)</td></tr>
-                    {renderSoftRows()}
-                    
-                    <tr className="section-row"><td colSpan={11}>페어 핸드 (스플릿 가능)</td></tr>
-                    {renderPairRows()}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <StrategyGuideModal isOpen={isStrategyOpen} onClose={() => setIsStrategyOpen(false)} />
     </div>
   );
 }

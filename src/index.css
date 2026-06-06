@@ -893,11 +893,11 @@ h1, h2, h3, h4 {
   cursor: not-allowed;
 }
 
-.chip-btn.color-10 { background: #6b7280; }
-.chip-btn.color-25 { background: var(--accent-green); }
-.chip-btn.color-100 { background: var(--accent-blue); }
-.chip-btn.color-500 { background: #7c3aed; }
-.chip-btn.color-1000 { background: #0f172a; border-color: var(--gold); color: var(--gold); }
+.chip-btn.color-gray { background: #6b7280; }
+.chip-btn.color-green { background: var(--accent-green); }
+.chip-btn.color-blue { background: var(--accent-blue); }
+.chip-btn.color-purple { background: #7c3aed; }
+.chip-btn.color-black { background: #0f172a; border-color: var(--gold); color: var(--gold); }
 
 .bet-actions {
   display: flex;
