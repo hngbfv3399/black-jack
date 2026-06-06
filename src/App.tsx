@@ -21,7 +21,7 @@ export default function App() {
       // Direct OAuth login to Google
       await signIn("google");
     } catch (err: any) {
-      setAuthError("Failed to initiate Google sign-in. Please try again.");
+      setAuthError("구글 로그인을 시작하지 못했습니다. 다시 시도해 주세요.");
     }
   };
 
@@ -39,7 +39,7 @@ export default function App() {
     return (
       <div className="app-loading">
         <RefreshCw className="spinner" size={48} />
-        <p>Connecting to Grand Casino...</p>
+        <p>그랜드 카지노 연결 중...</p>
       </div>
     );
   }
@@ -58,10 +58,10 @@ export default function App() {
         <div className="login-card glass">
           <div className="login-logo animate-glow">
             <Spade className="logo-icon-large" />
-            <h1>Antigravity Blackjack</h1>
+            <h1>안티그래비티 블랙잭</h1>
           </div>
           <p className="login-tagline">
-            Experience real-time online multiplayer Blackjack. Challenge dealer hands and climb the table ranks.
+            실시간 멀티플레이어 온라인 블랙잭을 경험해 보세요. 딜러에게 도전하고 테이블 랭킹을 올리세요!
           </p>
 
           {authError && <div className="error-message">{authError}</div>}
@@ -86,11 +86,11 @@ export default function App() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
               />
             </svg>
-            Sign in with Google
+            Google 계정으로 로그인
           </button>
 
           <div className="login-footer">
-            Secure authentication provided by Google OAuth.
+            Google OAuth를 통해 안전하게 인증됩니다.
           </div>
         </div>
       </div>

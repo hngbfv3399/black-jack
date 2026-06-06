@@ -18,15 +18,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     
     const trimmed = nickname.trim();
     if (trimmed.length < 2) {
-      setError("Nickname must be at least 2 characters.");
+      setError("닉네임은 최소 2글자 이상이어야 합니다.");
       return;
     }
     if (trimmed.length > 15) {
-      setError("Nickname cannot exceed 15 characters.");
+      setError("닉네임은 15글자를 초과할 수 없습니다.");
       return;
     }
     if (!/^[a-zA-Z0-9가-힣\s-_]+$/.test(trimmed)) {
-      setError("Nickname can only contain letters, numbers, spaces, -, and _.");
+      setError("닉네임은 한글, 영문, 숫자, 공백, -, _만 포함할 수 있습니다.");
       return;
     }
 
@@ -35,7 +35,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       await completeOnboarding({ nickname: trimmed });
       onComplete();
     } catch (err: any) {
-      setError(err.message || "Failed to set nickname. Please try again.");
+      setError(err.message || "닉네임 설정에 실패했습니다. 다시 시도해 주세요.");
     } finally {
       setIsLoading(false);
     }
@@ -46,19 +46,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       <div className="onboarding-card glass">
         <div className="brand-header animate-glow">
           <span className="brand-icon">♠</span>
-          <h1>Blackjack Online</h1>
+          <h1>온라인 블랙잭</h1>
         </div>
         <p className="onboarding-subtitle">
-          Welcome to the high-stakes table! Set your nickname to claim your starting balance of <strong>$3,000</strong>.
+          테이블에 오신 것을 환영합니다! 닉네임을 설정하고 초기 자금 <strong>$3,000</strong>를 받으세요.
         </p>
 
         <form onSubmit={handleSubmit} className="onboarding-form">
           <div className="input-group">
-            <label htmlFor="nickname">Choose Nickname</label>
+            <label htmlFor="nickname">닉네임 설정</label>
             <input
               type="text"
               id="nickname"
-              placeholder="Enter your nickname..."
+              placeholder="닉네임을 입력하세요..."
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               disabled={isLoading}
@@ -75,7 +75,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             className="btn-primary onboarding-btn"
             disabled={isLoading || !nickname.trim()}
           >
-            {isLoading ? "Setting Profile..." : "Claim $3,000 & Play"}
+            {isLoading ? "프로필 설정 중..." : "$3,000 받고 시작하기"}
           </button>
         </form>
       </div>

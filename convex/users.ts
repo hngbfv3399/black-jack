@@ -21,17 +21,17 @@ export const completeOnboarding = mutation({
   handler: async (ctx, { nickname }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new Error("You must be signed in to perform this action.");
+      throw new Error("로그인이 필요합니다.");
     }
 
     const trimmed = nickname.trim();
     if (trimmed.length < 2 || trimmed.length > 15) {
-      throw new Error("Nickname must be between 2 and 15 characters.");
+      throw new Error("닉네임은 2자에서 15자 사이여야 합니다.");
     }
 
     // Basic regex checks to ensure letters/numbers/spaces only (no injections)
     if (!/^[a-zA-Z0-9가-힣\s-_]+$/.test(trimmed)) {
-      throw new Error("Nickname contains invalid characters.");
+      throw new Error("닉네임에 유효하지 않은 문자가 포함되어 있습니다.");
     }
 
     // Check if nickname is taken
@@ -41,7 +41,7 @@ export const completeOnboarding = mutation({
       .first();
 
     if (existing && existing._id !== userId) {
-      throw new Error("This nickname is already taken by another player.");
+      throw new Error("이 닉네임은 이미 다른 플레이어가 사용 중입니다.");
     }
 
     // Update user profile with $3000 starting cash
@@ -59,17 +59,17 @@ export const completeOnboarding = mutation({
 export const getLeaderboard = query({
   args: {},
   handler: async (ctx) => {
-    const topUsers = await ctx.db.query("users").collect();
+    const topUsers = await ctx.db
+      .query("users")
+      .withIndex("by_onboarded_balance", (q) => q.eq("isOnboarded", true))
+      .order("desc")
+      .take(10);
     
-    return topUsers
-      .filter(u => u.isOnboarded && u.nickname !== undefined)
-      .map(u => ({
-        _id: u._id,
-        nickname: u.nickname!,
-        balance: u.balance ?? 0,
-      }))
-      .sort((a, b) => b.balance - a.balance)
-      .slice(0, 10); // top 10 players
+    return topUsers.map(u => ({
+      _id: u._id,
+      nickname: u.nickname!,
+      balance: u.balance ?? 0,
+    }));
   },
 });
 
@@ -79,17 +79,17 @@ export const refillBalance = mutation({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new Error("You must be signed in to perform this action.");
+      throw new Error("로그인이 필요합니다.");
     }
 
     const user = await ctx.db.get(userId);
     if (!user) {
-      throw new Error("User not found.");
+      throw new Error("사용자를 찾을 수 없습니다.");
     }
 
     const currentBalance = user.balance ?? 0;
     if (currentBalance >= 1000) {
-      throw new Error("You can only refill when your balance is below $1,000.");
+      throw new Error("잔액이 $1,000 미만일 때만 무료 충전이 가능합니다.");
     }
 
     await ctx.db.patch(userId, {

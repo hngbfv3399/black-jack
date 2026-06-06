@@ -18,6 +18,12 @@ export const seatValidator = v.object({
   cards: v.array(cardValidator), // Player's hand
   status: v.string(), // 'idle', 'betting', 'playing', 'stood', 'busted', 'blackjack', 'won', 'lost', 'push'
   lastAction: v.optional(v.string()), // 'hit', 'stand', 'double', 'join', 'leave' (for visual tags)
+  
+  // Split hand properties
+  splitCards: v.optional(v.array(cardValidator)),
+  splitBet: v.optional(v.number()),
+  splitStatus: v.optional(v.string()),
+  activeHandIndex: v.optional(v.number()),
 });
 
 // Dealer hand definition
@@ -44,7 +50,8 @@ export default defineSchema({
     isOnboarded: v.optional(v.boolean()), // default false
   })
     .index("by_nickname", ["nickname"])
-    .index("email", ["email"]),
+    .index("email", ["email"])
+    .index("by_onboarded_balance", ["isOnboarded", "balance"]),
 
   // Blackjack room tables
   tables: defineTable({
@@ -59,5 +66,7 @@ export default defineSchema({
     history: v.array(v.string()), // History logs
     lastUpdated: v.number(), // Unix timestamp (ms) of last modification
     hostId: v.optional(v.string()), // Host/Creator User ID
-  }),
+    runningCount: v.optional(v.number()), // Hi-Lo Running Count
+  })
+    .index("by_lastUpdated", ["lastUpdated"]),
 });

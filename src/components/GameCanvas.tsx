@@ -58,6 +58,8 @@ interface GameCanvasProps {
   table: any;
   currentUserId: string | null;
   onJoinSeat: (seatIndex: number) => void;
+  isStrategyHelperEnabled: boolean;
+  isBettingHelperEnabled: boolean;
 }
 
 // Animation item type
@@ -75,7 +77,13 @@ interface AnimatedCard {
   hidden?: boolean;
 }
 
-export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCanvasProps) {
+export default function GameCanvas({ 
+  table, 
+  currentUserId, 
+  onJoinSeat, 
+  isStrategyHelperEnabled, 
+  isBettingHelperEnabled 
+}: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const feltTextureRef = useRef<HTMLCanvasElement | null>(null);
@@ -86,6 +94,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
     seats: { [seatIdx: number]: number }; // seatIndex -> card count
     dealer: number; // dealer card count
   }>({ seats: {}, dealer: 0 });
+  const lastSplitCardsStateRef = useRef<{ [seatIdx: number]: number }>({});
 
   const [hoveredSeat, setHoveredSeat] = useState<number | null>(null);
   const [isPortrait, setIsPortrait] = useState<boolean>(() => {
@@ -95,8 +104,8 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
   // Dimensions on a logical canvas
   const WIDTH = isPortrait ? 800 : 1200;
   const HEIGHT = isPortrait ? 1200 : 800;
-  const SHOE_X = WIDTH - 120;
-  const SHOE_Y = 120;
+  const SHOE_X = WIDTH - 190;
+  const SHOE_Y = 100;
   const DEALER_X = WIDTH / 2;
   const DEALER_Y = 150;
   const CARD_WIDTH = 65;
@@ -186,11 +195,13 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
     table.seats.forEach((seat: any, seatIdx: number) => {
       if (seat.userId === null) {
         lastCardsStateRef.current.seats[seatIdx] = 0;
+        lastSplitCardsStateRef.current[seatIdx] = 0;
         return;
       }
       
       const prevCount = lastCardsStateRef.current.seats[seatIdx] || 0;
       const currentCards = seat.cards || [];
+      const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
 
       if (currentCards.length > prevCount) {
         // Add new cards to animation queue
@@ -200,7 +211,9 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           const offsets = getSeatOffsets(seatIdx);
           
           // Position offset for multiple cards in a hand
-          const targetX = seatCoords.x + offsets.card.x + i * 16;
+          const targetX = isSplit 
+            ? seatCoords.x - 65 + i * 16
+            : seatCoords.x + offsets.card.x + i * 16;
           const targetY = seatCoords.y + offsets.card.y;
 
           newAnimatedCards.push({
@@ -221,6 +234,38 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
         }
       }
       lastCardsStateRef.current.seats[seatIdx] = currentCards.length;
+
+      // 1b. Check Split hand cards
+      const prevSplitCount = lastSplitCardsStateRef.current[seatIdx] || 0;
+      const currentSplitCards = seat.splitCards || [];
+
+      if (currentSplitCards.length > prevSplitCount) {
+        for (let i = prevSplitCount; i < currentSplitCards.length; i++) {
+          const card = currentSplitCards[i];
+          const seatCoords = getSeatCoords(seatIdx);
+          const offsets = getSeatOffsets(seatIdx);
+          
+          const targetX = seatCoords.x + 15 + i * 16;
+          const targetY = seatCoords.y + offsets.card.y;
+
+          newAnimatedCards.push({
+            id: `seat-split-${seatIdx}-${i}-${Date.now()}`,
+            suit: card.suit,
+            value: card.value,
+            fromX: SHOE_X,
+            fromY: SHOE_Y,
+            toX: targetX,
+            toY: targetY,
+            progress: 0,
+            speed: animationSpeed,
+            delay: delayAccumulator,
+            hidden: card.hidden,
+          });
+          
+          delayAccumulator += 180;
+        }
+      }
+      lastSplitCardsStateRef.current[seatIdx] = currentSplitCards.length;
     });
 
     // 2. Check Dealer hand for new cards
@@ -553,32 +598,131 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       
       c.save();
       // Draw Payout rules arc
-      c.fillText("BLACKJACK PAYS 3 TO 2", WIDTH / 2, arcCenterY - 60);
+      c.fillText("블랙잭 1.5배 지급 (3:2)", WIDTH / 2, arcCenterY - 60);
       c.font = "14px sans-serif";
-      c.fillText("Dealer must stand on 17 and draw to 16", WIDTH / 2, arcCenterY - 20);
+      c.fillText("딜러는 17 이상 스탠드, 16 이하 드로우", WIDTH / 2, arcCenterY - 20);
       c.restore();
     };
 
     const drawDealerShoe = (c: CanvasRenderingContext2D) => {
       c.save();
-      // Draw card box (Shoe)
-      c.fillStyle = "#1e293b";
-      c.strokeStyle = "#e2b842";
-      c.lineWidth = 3;
+      // 1. Draw Shoe Base / Tray (translucent charcoal plastic)
+      c.fillStyle = "rgba(15, 23, 42, 0.85)";
+      c.strokeStyle = "rgba(226, 184, 66, 0.7)";
+      c.lineWidth = 2;
+      
+      // Box coordinates in perspective
+      const bx = SHOE_X;
+      const by = SHOE_Y;
+      const bw = 120;
+      const bh = 70;
+      
       c.beginPath();
-      c.moveTo(SHOE_X, SHOE_Y);
-      c.lineTo(SHOE_X + 80, SHOE_Y - 30);
-      c.lineTo(SHOE_X + 110, SHOE_Y + 20);
-      c.lineTo(SHOE_X + 30, SHOE_Y + 50);
-      c.closePath();
+      c.roundRect(bx, by, bw, bh, [6, 12, 12, 6]);
       c.fill();
       c.stroke();
+      
+      // 2. Draw Stack of Cards inside (Red back pattern)
+      const maxCards = 156;
+      const currentCardsCount = table.deck.length;
+      const ratio = Math.max(0, Math.min(1, currentCardsCount / maxCards));
+      const stackW = 95 * ratio; // width of card stack shrinks as cards deal
+      
+      if (stackW > 2) {
+        c.save();
+        // Red card stack gradient
+        const cardStackGrad = c.createLinearGradient(bx + 10, by + 10, bx + 10 + stackW, by + 10);
+        cardStackGrad.addColorStop(0, "#991b1b");
+        cardStackGrad.addColorStop(0.5, "#dc2626");
+        cardStackGrad.addColorStop(1, "#b91c1c");
+        c.fillStyle = cardStackGrad;
+        
+        c.beginPath();
+        c.roundRect(bx + 10, by + 10, stackW, bh - 20, 3);
+        c.fill();
+        
+        // Lines on stack to represent individual cards edge
+        c.strokeStyle = "rgba(0, 0, 0, 0.25)";
+        c.lineWidth = 0.8;
+        const lineInterval = Math.max(2, Math.floor(stackW / 12));
+        for (let lx = bx + 10 + lineInterval; lx < bx + 10 + stackW; lx += lineInterval) {
+          c.beginPath();
+          c.moveTo(lx, by + 10);
+          c.lineTo(lx, by + bh - 10);
+          c.stroke();
+        }
+        c.restore();
+      }
 
-      // Card decks indicator
+      // 3. Draw heavy roller/pressing block (gold) behind cards
       c.fillStyle = "#e2b842";
-      c.font = "bold 12px sans-serif";
-      c.fillText("SHOE (6D)", SHOE_X + 25, SHOE_Y + 15);
+      c.beginPath();
+      c.roundRect(bx + 10 + stackW, by + 8, 12, bh - 16, 2);
+      c.fill();
+
+      // Draw shiny gloss line on pressing block
+      c.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(bx + 12 + stackW, by + 10);
+      c.lineTo(bx + 12 + stackW, by + bh - 10);
+      c.stroke();
+
+      // 4. Card decks indicator text
+      c.fillStyle = "#ffffff";
+      c.font = "bold 11px sans-serif";
+      c.textAlign = "left";
+      c.fillText("카드 슈 (3덱)", bx + 12, by + bh + 15);
+      
+      c.fillStyle = "rgba(255, 255, 255, 0.6)";
+      c.font = "10px sans-serif";
+      c.fillText(`${currentCardsCount} / 156`, bx + 12, by + bh + 28);
+      
       c.restore();
+
+      // 5. Card Counting Stats Panel (overlay below shoe)
+      if (isBettingHelperEnabled) {
+        c.save();
+        const rc = table.runningCount ?? 0;
+        const decksRemaining = Math.max(0.1, currentCardsCount / 52);
+        const tc = rc / decksRemaining;
+
+        const rcStr = (rc >= 0 ? "+" : "") + rc;
+        const tcStr = (tc >= 0 ? "+" : "") + tc.toFixed(1);
+
+        const px = bx - 10;
+        const py = by + bh + 36;
+        const pw = 140;
+        const ph = 56;
+
+        // Draw counting panel card
+        c.fillStyle = "rgba(15, 23, 42, 0.85)";
+        c.strokeStyle = "rgba(226, 184, 66, 0.35)";
+        c.lineWidth = 1.2;
+        c.beginPath();
+        c.roundRect(px, py, pw, ph, 8);
+        c.fill();
+        c.stroke();
+
+        // Title
+        c.fillStyle = "rgba(255, 255, 255, 0.6)";
+        c.font = "bold 9px sans-serif";
+        c.fillText("하이로 카운트 정보", px + 10, py + 14);
+
+        // Stats text layout
+        c.fillStyle = "#ffffff";
+        c.font = "bold 11px sans-serif";
+        c.fillText(`런닝 카운트:`, px + 10, py + 28);
+        c.fillText(`트루 카운트:`, px + 10, py + 43);
+
+        c.textAlign = "right";
+        c.fillStyle = rc >= 0 ? "#10b981" : "#ef4444";
+        c.fillText(rcStr, px + pw - 10, py + 28);
+        c.fillStyle = tc >= 0 ? "#10b981" : "#ef4444";
+        c.fillText(tcStr, px + pw - 10, py + 43);
+
+        c.restore();
+      }
     };
 
     const drawDealerZone = (c: CanvasRenderingContext2D) => {
@@ -609,7 +753,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       const score = getHandValue(cards);
       
       c.fillText(
-        showScore ? `DEALER (${score})` : "DEALER",
+        showScore ? `딜러 (${score})` : "딜러",
         DEALER_X,
         badgeY + badgeH / 2
       );
@@ -727,9 +871,9 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
         c.textBaseline = "middle";
         c.fillStyle = isHovered ? "#ffffff" : "rgba(226, 184, 66, 0.5)";
         c.font = "12px sans-serif";
-        c.fillText("EMPTY", coords.x, coords.y - 5);
+        c.fillText("빈 자리", coords.x, coords.y - 5);
         c.font = "10px sans-serif";
-        c.fillText("SIT DOWN", coords.x, coords.y + 10);
+        c.fillText("착석하기", coords.x, coords.y + 10);
       }
 
       c.restore();
@@ -859,44 +1003,105 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
         if (seat.userId === null || seat.status === "idle") return;
 
         const seatCoords = getSeatCoords(seatIdx);
-        const cards = seat.cards || [];
         const offsets = getSeatOffsets(seatIdx);
+        const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
 
-        cards.forEach((card: any, cardIdx: number) => {
-          const isAnimating = animatedCardsRef.current.some(ac => ac.id.startsWith(`seat-${seatIdx}-${cardIdx}-`));
-          if (isAnimating) return; // let animation draw it
-
-          const x = seatCoords.x + offsets.card.x + cardIdx * 16;
-          const y = seatCoords.y + offsets.card.y;
-          const isRed = ["H", "D"].includes(card.suit);
-
-          drawCardShape(c, x, y, CARD_WIDTH, CARD_HEIGHT, 5, isRed, card.value, card.suit, !!card.hidden);
-        });
-
-        // Render current score value above the cards stack
-        if (cards.length > 0) {
-          const val = getHandValue(cards);
-          
-          c.save();
-          c.fillStyle = "rgba(15, 23, 42, 0.85)";
-          c.strokeStyle = "#e2b842";
-          c.lineWidth = 1.5;
-          
-          const badgeX = seatCoords.x + offsets.badge.x;
-          const badgeY = seatCoords.y + offsets.badge.y;
-          
-          c.beginPath();
-          c.arc(badgeX, badgeY, 18, 0, Math.PI * 2);
-          c.fill();
-          c.stroke();
-          
-          c.fillStyle = "#ffffff";
-          c.font = "bold 14px sans-serif";
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          c.fillText(`${val}`, badgeX, badgeY);
-          c.restore();
+        const hands = [];
+        if (isSplit) {
+          hands.push({
+            cards: seat.cards,
+            status: seat.status,
+            activeHandIdx: 0,
+            cardOffsetX: -65,
+            badgeOffsetX: -45,
+          });
+          hands.push({
+            cards: seat.splitCards,
+            status: seat.splitStatus || "playing",
+            activeHandIdx: 1,
+            cardOffsetX: 15,
+            badgeOffsetX: 35,
+          });
+        } else {
+          hands.push({
+            cards: seat.cards,
+            status: seat.status,
+            activeHandIdx: -1,
+            cardOffsetX: offsets.card.x,
+            badgeOffsetX: offsets.badge.x,
+          });
         }
+
+        hands.forEach((hand) => {
+          const cards = hand.cards || [];
+          
+          cards.forEach((card: any, cardIdx: number) => {
+            const animId = hand.activeHandIdx === 1 
+              ? `seat-split-${seatIdx}-${cardIdx}-`
+              : `seat-${seatIdx}-${cardIdx}-`;
+            const isAnimating = animatedCardsRef.current.some(ac => ac.id.startsWith(animId));
+            if (isAnimating) return; // let animation draw it
+
+            const x = seatCoords.x + hand.cardOffsetX + cardIdx * 16;
+            const y = seatCoords.y + offsets.card.y;
+            const isRed = ["H", "D"].includes(card.suit);
+
+            drawCardShape(c, x, y, CARD_WIDTH, CARD_HEIGHT, 5, isRed, card.value, card.suit, !!card.hidden);
+          });
+
+          // Render score value above this card hand
+          if (cards.length > 0) {
+            const val = getHandValue(cards);
+            
+            c.save();
+            // Highlight active hand in gold, otherwise standard border
+            const isHandActive = table.activeSeatIndex === seatIdx && 
+                                 table.status === "playing" &&
+                                 (hand.activeHandIdx === -1 || table.seats[seatIdx].activeHandIndex === hand.activeHandIdx);
+            
+            c.fillStyle = "rgba(15, 23, 42, 0.85)";
+            c.strokeStyle = isHandActive ? "#f59e0b" : "#e2b842";
+            c.lineWidth = isHandActive ? 2.5 : 1.5;
+            
+            const badgeX = seatCoords.x + hand.badgeOffsetX;
+            const badgeY = seatCoords.y + offsets.badge.y;
+            
+            c.beginPath();
+            c.arc(badgeX, badgeY, 18, 0, Math.PI * 2);
+            c.fill();
+            c.stroke();
+            
+            // Pulsing highlight around the active score badge
+            if (isHandActive) {
+              const pulse = 18 + Math.sin(Date.now() * 0.007) * 3.5;
+              c.strokeStyle = "rgba(245, 158, 11, 0.5)";
+              c.lineWidth = 2;
+              c.beginPath();
+              c.arc(badgeX, badgeY, pulse, 0, Math.PI * 2);
+              c.stroke();
+            }
+
+            // Draw a gold recommendation indicator dot if helper is enabled
+            if (isStrategyHelperEnabled && isHandActive) {
+              c.fillStyle = "#e2b842";
+              c.beginPath();
+              c.arc(badgeX + 11, badgeY - 11, 4, 0, Math.PI * 2);
+              c.fill();
+            }
+
+            c.fillStyle = "#ffffff";
+            c.font = "bold 14px sans-serif";
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+
+            let displayVal = `${val}`;
+            if (hand.status === "blackjack") displayVal = "BJ";
+            if (hand.status === "busted") displayVal = "BT";
+
+            c.fillText(displayVal, badgeX, badgeY);
+            c.restore();
+          }
+        });
       });
     };
 
@@ -953,7 +1158,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
       // Heading
       c.fillStyle = "#e2b842";
       c.font = "bold 10px sans-serif";
-      c.fillText("TABLE LOGS", logX + 12, logY + 18);
+      c.fillText("테이블 로그", logX + 12, logY + 18);
 
       // Lines
       c.fillStyle = "#cbd5e1";
@@ -979,7 +1184,7 @@ export default function GameCanvas({ table, currentUserId, onJoinSeat }: GameCan
           c.fillStyle = "#e2b842";
           c.font = "bold 11px sans-serif";
           c.fillText(
-            table.status === "betting" ? "BETTING TIME" : (table.status === "round_over" ? "NEXT ROUND IN" : "TURN TIME"),
+            table.status === "betting" ? "배팅 시간" : (table.status === "round_over" ? "다음 라운드 대기" : "남은 시간"),
             isPortrait ? WIDTH - 180 : WIDTH - 150,
             HEIGHT - 45
           );

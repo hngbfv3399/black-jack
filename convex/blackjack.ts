@@ -26,8 +26,8 @@ export function createDeck(): Card[] {
   const values = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
   const deck: Card[] = [];
   
-  // Use 6 decks for standard casino rules
-  for (let i = 0; i < 6; i++) {
+  // Use 3 decks as requested
+  for (let i = 0; i < 3; i++) {
     for (const suit of suits) {
       for (const value of values) {
         deck.push({ suit, value });
@@ -67,13 +67,25 @@ export function getHandValue(cards: Card[]): number {
   return value;
 }
 
+export function getCardCountValue(card: Card): number {
+  const v = card.value;
+  if (["2", "3", "4", "5", "6"].includes(v)) return 1;
+  if (["7", "8", "9"].includes(v)) return 0;
+  if (["10", "J", "Q", "K", "A"].includes(v)) return -1;
+  return 0;
+}
+
 // Queries
 
-// List all active Blackjack tables (and auto-create one if none exist)
+// List recently active Blackjack tables (limited to 50 to optimize performance)
 export const listTables = query({
   args: {},
   handler: async (ctx) => {
-    let tables = await ctx.db.query("tables").collect();
+    let tables = await ctx.db
+      .query("tables")
+      .withIndex("by_lastUpdated")
+      .order("desc")
+      .take(50);
     
     // Auto-create a default table if none exist so players can join instantly
     if (tables.length === 0) {
@@ -93,7 +105,10 @@ export const listTables = query({
 export const seedDefaultTable = mutation({
   args: {},
   handler: async (ctx) => {
-    const existing = await ctx.db.query("tables").first();
+    const existing = await ctx.db
+      .query("tables")
+      .withIndex("by_lastUpdated")
+      .first();
     if (existing) return existing._id;
 
     const seats = Array.from({ length: 8 }, () => ({
@@ -114,8 +129,9 @@ export const seedDefaultTable = mutation({
       deck: createDeck(),
       activeSeatIndex: -1,
       roundNumber: 1,
-      history: ["Table created. Welcome to Blackjack!"],
+      history: ["테이블이 생성되었습니다. 블랙잭에 오신 것을 환영합니다!"],
       lastUpdated: Date.now(),
+      runningCount: 0,
     });
 
     return tableId;
@@ -127,11 +143,11 @@ export const createTable = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Not authenticated");
+    if (userId === null) throw new Error("로그인이 필요합니다.");
 
     const trimmed = name.trim();
     if (trimmed.length < 2 || trimmed.length > 25) {
-      throw new Error("Table name must be between 2 and 25 characters.");
+      throw new Error("테이블 이름은 2자에서 25자 사이여야 합니다.");
     }
 
     const seats = Array.from({ length: 8 }, () => ({
@@ -152,9 +168,10 @@ export const createTable = mutation({
       deck: createDeck(),
       activeSeatIndex: -1,
       roundNumber: 1,
-      history: [`Table "${trimmed}" created by player.`],
+      history: [`플레이어가 테이블 "${trimmed}"을(를) 생성했습니다.`],
       lastUpdated: Date.now(),
       hostId: userId,
+      runningCount: 0,
     });
 
     return tableId;
@@ -176,20 +193,20 @@ export const joinSeat = mutation({
   args: { tableId: v.id("tables"), seatIndex: v.number() },
   handler: async (ctx, { tableId, seatIndex }) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Not authenticated");
+    if (userId === null) throw new Error("로그인이 필요합니다.");
 
     const user = await ctx.db.get(userId);
-    if (!user || !user.isOnboarded) throw new Error("Complete onboarding first");
+    if (!user || !user.isOnboarded) throw new Error("프로필 설정을 완료해주세요.");
 
     const table = await ctx.db.get(tableId);
-    if (!table) throw new Error("Table not found");
+    if (!table) throw new Error("테이블을 찾을 수 없습니다.");
 
-    if (seatIndex < 0 || seatIndex >= 8) throw new Error("Invalid seat selection");
-    if (table.seats[seatIndex].userId !== null) throw new Error("Seat is already taken");
+    if (seatIndex < 0 || seatIndex >= 8) throw new Error("유효하지 않은 자리 선택입니다.");
+    if (table.seats[seatIndex].userId !== null) throw new Error("이미 다른 플레이어가 앉아있는 자리입니다.");
 
     // Check if player is already seated at another seat
     const alreadySeated = table.seats.some(s => s.userId === userId);
-    if (alreadySeated) throw new Error("You are already seated at this table");
+    if (alreadySeated) throw new Error("이미 이 테이블의 자리에 앉아 있습니다.");
 
     // Copy player info to seat
     const updatedSeats = [...table.seats];
@@ -200,24 +217,18 @@ export const joinSeat = mutation({
       bet: 0,
       cards: [],
       status: "idle",
-      lastAction: "join",
+      lastAction: "착석",
     };
 
-    const newHistory = [...table.history, `${user.nickname} sat down at Seat ${seatIndex + 1}`].slice(-15);
+    const newHistory = [...table.history, `${user.nickname}님이 ${seatIndex + 1}번 자리에 앉았습니다.`].slice(-15);
 
     let newStatus = table.status;
     let newTimer = table.timer;
 
-    // If table was waiting (empty) and we now have a player, transition to betting phase
+    // If table was waiting (empty) and we now have a player, transition to betting phase (no timer)
     if (table.status === "waiting") {
       newStatus = "betting";
-      newTimer = Date.now() + 15000; // 15 seconds to place bet
-      
-      // Schedule timeout to deal cards
-      await ctx.scheduler.runAfter(15000, internal.blackjack.endBettingTimeout, {
-        tableId,
-        roundNumber: table.roundNumber,
-      });
+      newTimer = undefined;
     }
 
     await ctx.db.patch(tableId, {
@@ -235,13 +246,13 @@ export const leaveSeat = mutation({
   args: { tableId: v.id("tables"), seatIndex: v.number() },
   handler: async (ctx, { tableId, seatIndex }) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Not authenticated");
+    if (userId === null) throw new Error("로그인이 필요합니다.");
 
     const table = await ctx.db.get(tableId);
-    if (!table) throw new Error("Table not found");
+    if (!table) throw new Error("테이블을 찾을 수 없습니다.");
 
     const seat = table.seats[seatIndex];
-    if (seat.userId !== userId) throw new Error("You are not sitting in this seat");
+    if (seat.userId !== userId) throw new Error("이 자리에 앉아 있지 않습니다.");
 
     // Refund bet if in betting phase, otherwise they forfeit the active bet
     const updatedSeats = [...table.seats];
@@ -252,7 +263,7 @@ export const leaveSeat = mutation({
       bet: 0,
       cards: [],
       status: "idle",
-      lastAction: "leave",
+      lastAction: "퇴장",
     };
 
     // Return any remaining balance to the user's permanent record
@@ -261,7 +272,7 @@ export const leaveSeat = mutation({
       await ctx.db.patch(userId, { balance: seat.balance });
     }
 
-    const newHistory = [...table.history, `${seat.nickname} left Seat ${seatIndex + 1}`].slice(-15);
+    const newHistory = [...table.history, `${seat.nickname}님이 ${seatIndex + 1}번 자리에서 일어났습니다.`].slice(-15);
 
     // Check if table is empty now
     const activePlayers = updatedSeats.filter(s => s.userId !== null);
@@ -327,7 +338,7 @@ export const leaveTable = mutation({
         bet: 0,
         cards: [],
         status: "idle",
-        lastAction: "leave",
+        lastAction: "퇴장",
       };
 
       const user = await ctx.db.get(userId);
@@ -370,7 +381,7 @@ export const leaveTable = mutation({
       }
 
       const nickname = table.seats[seatIndex]?.nickname ?? "Player";
-      const newHistory = [...(table.history ?? []), `${nickname} left the table.`].slice(-15);
+      const newHistory = [...(table.history ?? []), `${nickname}님이 테이블을 퇴장했습니다.`].slice(-15);
 
       await ctx.db.patch(tableId, {
         seats: updatedSeats,
@@ -391,17 +402,17 @@ export const placeBet = mutation({
   args: { tableId: v.id("tables"), seatIndex: v.number(), amount: v.number() },
   handler: async (ctx, { tableId, seatIndex, amount }) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Not authenticated");
+    if (userId === null) throw new Error("로그인이 필요합니다.");
 
     const table = await ctx.db.get(tableId);
-    if (!table) throw new Error("Table not found");
+    if (!table) throw new Error("테이블을 찾을 수 없습니다.");
 
-    if (table.status !== "betting") throw new Error("Bets can only be placed during the betting phase");
+    if (table.status !== "betting") throw new Error("베팅은 배팅 단계에서만 가능합니다.");
     
     const seat = table.seats[seatIndex];
-    if (seat.userId !== userId) throw new Error("You are not sitting in this seat");
-    if (amount <= 0) throw new Error("Bet amount must be positive");
-    if (amount > seat.balance) throw new Error("Insufficient balance");
+    if (seat.userId !== userId) throw new Error("이 자리에 앉아 있지 않습니다.");
+    if (amount <= 0) throw new Error("베팅 금액은 0보다 커야 합니다.");
+    if (amount > seat.balance) throw new Error("잔액이 부족합니다.");
 
     const updatedSeats = [...table.seats];
     const newSeatBalance = seat.balance - amount;
@@ -411,13 +422,13 @@ export const placeBet = mutation({
       bet: amount,
       balance: newSeatBalance,
       status: "betting",
-      lastAction: `bet $${amount}`,
+      lastAction: `배팅 $${amount}`,
     };
 
     // Sync balance immediately to user record
     await ctx.db.patch(userId, { balance: newSeatBalance });
 
-    const newHistory = [...table.history, `${seat.nickname} bet $${amount}`].slice(-15);
+    const newHistory = [...table.history, `${seat.nickname}님이 $${amount}를 배팅했습니다.`].slice(-15);
 
     // If all seated players have placed their bets, start the round immediately!
     const seatedPlayers = updatedSeats.filter(s => s.userId !== null);
@@ -444,53 +455,62 @@ export const playAction = mutation({
   args: { tableId: v.id("tables"), seatIndex: v.number(), action: v.string() },
   handler: async (ctx, { tableId, seatIndex, action }) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("Not authenticated");
+    if (userId === null) throw new Error("로그인이 필요합니다.");
 
     const table = await ctx.db.get(tableId);
-    if (!table) throw new Error("Table not found");
+    if (!table) throw new Error("테이블을 찾을 수 없습니다.");
 
-    if (table.status !== "playing") throw new Error("Game is not in active playing phase");
-    if (table.activeSeatIndex !== seatIndex) throw new Error("It is not your turn");
+    if (table.status !== "playing") throw new Error("게임이 진행 중인 단계가 아닙니다.");
+    if (table.activeSeatIndex !== seatIndex) throw new Error("당신의 차례가 아닙니다.");
 
     const seat = table.seats[seatIndex];
-    if (seat.userId !== userId) throw new Error("You are not sitting in this seat");
+    if (seat.userId !== userId) throw new Error("이 자리에 앉아 있지 않습니다.");
 
     const updatedSeats = [...table.seats];
     let updatedDeck = [...table.deck];
     const newHistory = [...table.history];
+    let runningCount = table.runningCount ?? 0;
 
-    // Ensure we have enough cards in shoe (reshuffle if running low)
-    if (updatedDeck.length < 52) {
+    // Ensure we have enough cards in shoe (reshuffle if running low, safe for 3-deck shoe)
+    if (updatedDeck.length < 20) {
       updatedDeck = createDeck();
-      newHistory.push("Shoe running low. Deck reshuffled!");
+      newHistory.push("카드 슈에 카드가 부족하여 새로 셔플했습니다!");
+      runningCount = 0;
     }
 
+    const isSplit = seat.splitCards !== undefined;
+    const isSplitHandActive = isSplit && seat.activeHandIndex === 1;
+
     if (action === "hit") {
+      const currentCards = isSplitHandActive ? seat.splitCards! : seat.cards;
       const drawnCard = updatedDeck.pop()!;
-      const newCards = [...seat.cards, drawnCard];
+      runningCount += getCardCountValue(drawnCard);
+
+      const newCards = [...currentCards, drawnCard];
       const newScore = getHandValue(newCards);
       
-      let newStatus = "playing";
-      let nextStep = false;
-      let logMsg = `${seat.nickname} hits and receives ${drawnCard.value}${drawnCard.suit}`;
+      let newHandStatus = "playing";
+      let logMsg = `${seat.nickname}님이 히트했습니다 (${isSplitHandActive ? '스플릿 핸드' : '메인 핸드'}). 카드 획득: ${drawnCard.value}${drawnCard.suit}`;
 
       if (newScore > 21) {
-        newStatus = "busted";
-        logMsg += " (Bust!)";
-        nextStep = true;
+        newHandStatus = "busted";
+        logMsg += " (버스트!)";
       } else if (newScore === 21) {
-        newStatus = "stood";
+        newHandStatus = "stood";
         logMsg += " (21!)";
-        nextStep = true;
       }
 
-      updatedSeats[seatIndex] = {
-        ...seat,
-        cards: newCards,
-        status: newStatus,
-        lastAction: "hit",
-      };
-
+      const updatedSeat = { ...seat };
+      if (isSplitHandActive) {
+        updatedSeat.splitCards = newCards;
+        updatedSeat.splitStatus = newHandStatus;
+        updatedSeat.lastAction = "히트";
+      } else {
+        updatedSeat.cards = newCards;
+        updatedSeat.status = newHandStatus;
+        updatedSeat.lastAction = "히트";
+      }
+      updatedSeats[seatIndex] = updatedSeat;
       newHistory.push(logMsg);
 
       await ctx.db.patch(tableId, {
@@ -498,68 +518,118 @@ export const playAction = mutation({
         deck: updatedDeck,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
+        runningCount,
       });
 
-      if (nextStep) {
-        await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
-          tableId,
-          roundNumber: table.roundNumber,
-        });
+      const handEnded = newHandStatus !== "playing";
+      if (handEnded) {
+        if (isSplit && seat.activeHandIndex === 0) {
+          // Switch to Split Hand (Hand 2)
+          updatedSeats[seatIndex] = {
+            ...updatedSeat,
+            activeHandIndex: 1,
+          };
+          await ctx.db.patch(tableId, {
+            seats: updatedSeats,
+            timer: Date.now() + 15000,
+            lastUpdated: Date.now(),
+            runningCount,
+          });
+        } else {
+          // Advance turn
+          await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+            tableId,
+            roundNumber: table.roundNumber,
+          });
+        }
       } else {
         // Reset turn timer (15 seconds) for same player
         await ctx.db.patch(tableId, {
           timer: Date.now() + 15000,
           lastUpdated: Date.now(),
+          runningCount,
         });
       }
 
     } else if (action === "stand") {
-      updatedSeats[seatIndex] = {
-        ...seat,
-        status: "stood",
-        lastAction: "stand",
-      };
+      const currentCards = isSplitHandActive ? seat.splitCards! : seat.cards;
+      const currentScore = getHandValue(currentCards);
+      const updatedSeat = { ...seat };
 
-      newHistory.push(`${seat.nickname} stands on ${getHandValue(seat.cards)}`);
+      if (isSplitHandActive) {
+        updatedSeat.splitStatus = "stood";
+        updatedSeat.lastAction = "스탠드";
+      } else {
+        updatedSeat.status = "stood";
+        updatedSeat.lastAction = "스탠드";
+      }
+      updatedSeats[seatIndex] = updatedSeat;
+      newHistory.push(`${seat.nickname}님이 ${currentScore}점으로 스탠드했습니다 (${isSplitHandActive ? '스플릿 핸드' : '메인 핸드'})`);
 
       await ctx.db.patch(tableId, {
         seats: updatedSeats,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
+        runningCount,
       });
 
-      await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
-        tableId,
-        roundNumber: table.roundNumber,
-      });
+      if (isSplit && seat.activeHandIndex === 0) {
+        // Switch to Split Hand (Hand 2)
+        updatedSeats[seatIndex] = {
+          ...updatedSeat,
+          activeHandIndex: 1,
+        };
+        await ctx.db.patch(tableId, {
+          seats: updatedSeats,
+          timer: Date.now() + 15000,
+          lastUpdated: Date.now(),
+          runningCount,
+        });
+      } else {
+        await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+          tableId,
+          roundNumber: table.roundNumber,
+        });
+      }
 
     } else if (action === "double") {
-      if (seat.cards.length !== 2) throw new Error("Double down is only allowed on the initial two cards");
-      if (seat.balance < seat.bet) throw new Error("Insufficient chips to double bet");
+      const currentCards = isSplitHandActive ? seat.splitCards! : seat.cards;
+      const currentBet = isSplitHandActive ? seat.splitBet! : seat.bet;
 
-      // Deduct another bet amount
-      const extraBet = seat.bet;
+      if (currentCards.length !== 2) throw new Error("더블 다운은 처음 받은 2장의 카드로만 가능합니다.");
+      if (seat.balance < currentBet) throw new Error("베팅을 두 배로 늘릴 칩이 부족합니다.");
+
+      const extraBet = currentBet;
       const newBalance = seat.balance - extraBet;
-      const newBet = seat.bet * 2;
+      const newBet = currentBet * 2;
 
       await ctx.db.patch(userId, { balance: newBalance });
 
       const drawnCard = updatedDeck.pop()!;
-      const newCards = [...seat.cards, drawnCard];
+      runningCount += getCardCountValue(drawnCard);
+
+      const newCards = [...currentCards, drawnCard];
       const newScore = getHandValue(newCards);
-      const newStatus = newScore > 21 ? "busted" : "stood";
+      const newHandStatus = newScore > 21 ? "busted" : "stood";
+      const updatedSeat = { ...seat };
 
-      updatedSeats[seatIndex] = {
-        ...seat,
-        bet: newBet,
-        balance: newBalance,
-        cards: newCards,
-        status: newStatus,
-        lastAction: "double",
-      };
+      if (isSplitHandActive) {
+        updatedSeat.splitBet = newBet;
+        updatedSeat.balance = newBalance;
+        updatedSeat.splitCards = newCards;
+        updatedSeat.splitStatus = newHandStatus;
+        updatedSeat.lastAction = "더블";
+      } else {
+        updatedSeat.bet = newBet;
+        updatedSeat.balance = newBalance;
+        updatedSeat.cards = newCards;
+        updatedSeat.status = newHandStatus;
+        updatedSeat.lastAction = "더블";
+      }
+      updatedSeats[seatIndex] = updatedSeat;
 
-      let logMsg = `${seat.nickname} doubles down to $${newBet}, draws ${drawnCard.value}${drawnCard.suit}`;
-      if (newScore > 21) logMsg += " (Bust!)";
+      let logMsg = `${seat.nickname} 더블 다운: $${newBet}로 배팅 증가 (${isSplitHandActive ? '스플릿 핸드' : '메인 핸드'}), 카드: ${drawnCard.value}${drawnCard.suit}`;
+      if (newScore > 21) logMsg += " (버스트!)";
 
       newHistory.push(logMsg);
 
@@ -568,11 +638,73 @@ export const playAction = mutation({
         deck: updatedDeck,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
+        runningCount,
       });
 
-      await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
-        tableId,
-        roundNumber: table.roundNumber,
+      if (isSplit && seat.activeHandIndex === 0) {
+        // Switch to Split Hand (Hand 2)
+        updatedSeats[seatIndex] = {
+          ...updatedSeat,
+          activeHandIndex: 1,
+        };
+        await ctx.db.patch(tableId, {
+          seats: updatedSeats,
+          timer: Date.now() + 15000,
+          lastUpdated: Date.now(),
+          runningCount,
+        });
+      } else {
+        await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+          tableId,
+          roundNumber: table.roundNumber,
+        });
+      }
+    } else if (action === "split") {
+      if (seat.cards.length !== 2) throw new Error("스플릿은 처음 받은 2장의 카드로만 가능합니다.");
+      if (seat.cards[0].value !== seat.cards[1].value) throw new Error("스플릿하려면 카드의 숫자가 같아야 합니다.");
+      if (seat.balance < seat.bet) throw new Error("스플릿 베팅을 할 칩이 부족합니다.");
+
+      const splitBet = seat.bet;
+      const newBalance = seat.balance - splitBet;
+
+      await ctx.db.patch(userId, { balance: newBalance });
+
+      const card0 = seat.cards[0];
+      const card1 = seat.cards[1];
+
+      const drawn1 = updatedDeck.pop()!;
+      const drawn2 = updatedDeck.pop()!;
+      runningCount += getCardCountValue(drawn1) + getCardCountValue(drawn2);
+
+      const newCards = [card0, drawn1];
+      const newSplitCards = [card1, drawn2];
+
+      updatedSeats[seatIndex] = {
+        ...seat,
+        balance: newBalance,
+        cards: newCards,
+        splitCards: newSplitCards,
+        splitBet: splitBet,
+        status: "playing",
+        splitStatus: "playing",
+        activeHandIndex: 0,
+        lastAction: "스플릿",
+      };
+
+      newHistory.push(`${seat.nickname}님이 ${card0.value} 카드를 스플릿했습니다. 1번 핸드: ${drawn1.value}${drawn1.suit}, 2번 핸드: ${drawn2.value}${drawn2.suit}`);
+
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        deck: updatedDeck,
+        history: newHistory.slice(-15),
+        lastUpdated: Date.now(),
+        runningCount,
+      });
+
+      await ctx.db.patch(tableId, {
+        timer: Date.now() + 15000,
+        lastUpdated: Date.now(),
+        runningCount,
       });
     }
   },
@@ -601,7 +733,7 @@ export const dealCards = internalMutation({
 
     const updatedSeats = [...table.seats];
     let updatedDeck = [...table.deck];
-    const newHistory = [...table.history, "Dealing starting hands..."];
+    const newHistory = [...table.history, "시작 카드 딜링 중..."];
 
     // Identify who betted
     const bettingSeatsIndices: number[] = [];
@@ -627,7 +759,7 @@ export const dealCards = internalMutation({
 
     // If nobody placed a bet, restart betting countdown
     if (bettingSeatsIndices.length === 0) {
-      newHistory.push("No bets placed. Waiting for players...");
+      newHistory.push("배팅금액이 없습니다. 대기 중...");
       await ctx.db.patch(tableId, {
         status: "betting",
         timer: Date.now() + 15000,
@@ -644,24 +776,30 @@ export const dealCards = internalMutation({
 
     // Deal phase: Player 1st, Dealer 1st, Player 2nd, Dealer 2nd (face down)
     // Card drawing helper
-    const draw = () => {
+    let runningCount = table.runningCount ?? 0;
+    const draw = (faceUp = true) => {
       if (updatedDeck.length < 10) {
         updatedDeck = createDeck();
+        runningCount = 0; // reset on reshuffle!
       }
-      return updatedDeck.pop()!;
+      const c = updatedDeck.pop()!;
+      if (faceUp) {
+        runningCount += getCardCountValue(c);
+      }
+      return c;
     };
 
     // Deal Card 1
     for (const idx of bettingSeatsIndices) {
-      updatedSeats[idx].cards.push(draw());
+      updatedSeats[idx].cards.push(draw(true));
     }
-    const dealerFirstCard = draw();
+    const dealerFirstCard = draw(true);
     
     // Deal Card 2
     for (const idx of bettingSeatsIndices) {
-      updatedSeats[idx].cards.push(draw());
+      updatedSeats[idx].cards.push(draw(true));
     }
-    const dealerSecondCard = { ...draw(), hidden: true };
+    const dealerSecondCard = { ...draw(false), hidden: true };
 
     const dealerHand = {
       cards: [dealerFirstCard, dealerSecondCard],
@@ -673,7 +811,7 @@ export const dealCards = internalMutation({
       const val = getHandValue(updatedSeats[idx].cards);
       if (val === 21) {
         updatedSeats[idx].status = "blackjack";
-        newHistory.push(`${updatedSeats[idx].nickname} has Natural Blackjack!`);
+        newHistory.push(`${updatedSeats[idx].nickname}님 내추럴 블랙잭 달성!`);
       }
     }
 
@@ -687,12 +825,15 @@ export const dealCards = internalMutation({
       if (realDealerScore === 21) {
         dealerHand.cards[1].hidden = false; // Reveal card
         dealerHand.status = "blackjack";
-        newHistory.push("Dealer has Blackjack!");
+        newHistory.push("딜러 블랙잭 달성!");
         immediateSettle = true;
       }
     }
 
     if (immediateSettle) {
+      // Reveal second card -> add its value to running count!
+      runningCount += getCardCountValue(dealerSecondCard);
+
       // Jump straight to dealer turn / settlement
       await ctx.db.patch(tableId, {
         seats: updatedSeats,
@@ -703,6 +844,7 @@ export const dealCards = internalMutation({
         timer: undefined,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
+        runningCount,
       });
 
       await ctx.scheduler.runAfter(15000, internal.blackjack.settleRound, {
@@ -733,6 +875,7 @@ export const dealCards = internalMutation({
         timer: undefined,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
+        runningCount,
       });
 
       await ctx.scheduler.runAfter(15000, internal.blackjack.settleRound, {
@@ -750,6 +893,7 @@ export const dealCards = internalMutation({
         timer: Date.now() + 15000,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
+        runningCount,
       });
 
       // Schedule turn timeout
@@ -819,25 +963,59 @@ export const turnTimeout = internalMutation({
     // Force Stand on timeout
     const updatedSeats = [...table.seats];
     const seat = updatedSeats[seatIndex];
-    
-    updatedSeats[seatIndex] = {
-      ...seat,
-      status: "stood",
-      lastAction: "stand (timeout)",
-    };
+    const isSplit = seat.splitCards !== undefined;
 
-    const newHistory = [...table.history, `${seat.nickname} timed out and automatically stood on ${getHandValue(seat.cards)}`].slice(-15);
+    if (isSplit && seat.activeHandIndex === 0) {
+      // Force stand on hand 1, switch to split hand (hand 2)
+      updatedSeats[seatIndex] = {
+        ...seat,
+        status: "stood",
+        activeHandIndex: 1,
+        lastAction: "스탠드(시간초과)",
+      };
+      
+      const newHistory = [...table.history, `${seat.nickname}님이 메인 핸드에서 시간 초과로 ${getHandValue(seat.cards)}점에서 자동 스탠드되었습니다.`].slice(-15);
 
-    await ctx.db.patch(tableId, {
-      seats: updatedSeats,
-      history: newHistory,
-      lastUpdated: Date.now(),
-    });
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        history: newHistory,
+        timer: Date.now() + 15000,
+        lastUpdated: Date.now(),
+      });
 
-    await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
-      tableId,
-      roundNumber,
-    });
+      // Schedule next timeout for hand 2
+      await ctx.scheduler.runAfter(15000, internal.blackjack.turnTimeout, {
+        tableId,
+        seatIndex,
+        roundNumber,
+      });
+    } else {
+      // Standard stand (either not split, or already on split hand 2)
+      const updatedSeat = { ...seat };
+      if (isSplit && seat.activeHandIndex === 1) {
+        updatedSeat.splitStatus = "stood";
+        updatedSeat.lastAction = "스탠드(시간초과)";
+      } else {
+        updatedSeat.status = "stood";
+        updatedSeat.lastAction = "스탠드(시간초과)";
+      }
+      updatedSeats[seatIndex] = updatedSeat;
+
+      const val = isSplit ? getHandValue(seat.splitCards!) : getHandValue(seat.cards);
+      const suffix = isSplit ? " (스플릿 핸드)" : "";
+      const newHistory = [...table.history, `${seat.nickname}님이 시간 초과로 ${val}점${suffix}에서 자동 스탠드되었습니다.`].slice(-15);
+
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        history: newHistory,
+        lastUpdated: Date.now(),
+      });
+
+      await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+        tableId,
+        roundNumber,
+      });
+    }
   },
 });
 
@@ -849,58 +1027,200 @@ export const dealerPlay = internalMutation({
     if (!table || table.status !== "dealer_turn" || table.roundNumber !== roundNumber) return;
 
     const dealerHand = { ...table.dealer };
-    // Reveal second card
-    dealerHand.cards = dealerHand.cards.map(c => ({ ...c, hidden: false }));
+    // Reveal second card & add its value to running count!
+    let revealedCount = 0;
+    dealerHand.cards = dealerHand.cards.map(c => {
+      if (c.hidden) {
+        revealedCount += getCardCountValue(c);
+        return { ...c, hidden: false };
+      }
+      return c;
+    });
+    const newRunningCount = (table.runningCount ?? 0) + revealedCount;
     
-    let updatedDeck = [...table.deck];
-    const newHistory = [...table.history, "Dealer reveals hole card..."];
+    const newHistory = [...table.history, "딜러가 홀 카드를 공개합니다..."];
 
     // Check if dealer needs to draw
     // If all active players busted, dealer stands immediately without drawing cards
     const activeSeats = table.seats.filter(s => s.userId !== null && s.bet > 0);
-    const allBusted = activeSeats.every(s => s.status === "busted");
+    
+    // Check bust status for both main and split hand if present
+    const allBusted = activeSeats.every(s => {
+      const mainBust = s.status === "busted";
+      const splitBust = s.splitCards ? (s.splitStatus === "busted") : true;
+      return mainBust && splitBust;
+    });
 
     if (allBusted) {
-      newHistory.push("All players busted. Dealer stands.");
+      newHistory.push("모든 플레이어가 버스트되었습니다. 딜러가 스탠드합니다.");
       dealerHand.status = "stood";
-    } else {
-      let dealerScore = getHandValue(dealerHand.cards);
-      newHistory.push(`Dealer shows ${dealerScore}`);
+      
+      await ctx.db.patch(tableId, {
+        dealer: dealerHand,
+        history: newHistory.slice(-15),
+        lastUpdated: Date.now(),
+        runningCount: newRunningCount,
+      });
 
-      // Dealer hits soft/hard 17 limits: Draw card if under 17
-      while (dealerScore < 17) {
-        if (updatedDeck.length < 5) {
-          updatedDeck = createDeck();
-        }
-        const drawn = updatedDeck.pop()!;
-        dealerHand.cards.push(drawn);
-        dealerScore = getHandValue(dealerHand.cards);
-        newHistory.push(`Dealer draws ${drawn.value}${drawn.suit} and shows ${dealerScore}`);
-      }
-
-      if (dealerScore > 21) {
-        dealerHand.status = "busted";
-        newHistory.push("Dealer busts!");
-      } else {
-        dealerHand.status = "stood";
-        newHistory.push(`Dealer stands on ${dealerScore}`);
-      }
+      // Schedule settlement
+      await ctx.scheduler.runAfter(2000, internal.blackjack.settleRound, {
+        tableId,
+        roundNumber,
+      });
+      return;
     }
+
+    const dealerScore = getHandValue(dealerHand.cards);
+    newHistory.push(`딜러 카드 합계: ${dealerScore}`);
 
     await ctx.db.patch(tableId, {
       dealer: dealerHand,
-      deck: updatedDeck,
       history: newHistory.slice(-15),
       lastUpdated: Date.now(),
+      runningCount: newRunningCount,
     });
 
-    // Schedule settlement
-    await ctx.scheduler.runAfter(2000, internal.blackjack.settleRound, {
-      tableId,
-      roundNumber,
-    });
+    if (dealerScore < 17) {
+      // Schedule sequential delayed hits
+      await ctx.scheduler.runAfter(1200, internal.blackjack.dealerHitLoop, {
+        tableId,
+        roundNumber,
+      });
+    } else {
+      dealerHand.status = "stood";
+      await ctx.db.patch(tableId, {
+        dealer: dealerHand,
+        lastUpdated: Date.now(),
+        runningCount: newRunningCount,
+      });
+      await ctx.scheduler.runAfter(2000, internal.blackjack.settleRound, {
+        tableId,
+        roundNumber,
+      });
+    }
   },
 });
+
+// Dealer delayed sequential hitting loop
+export const dealerHitLoop = internalMutation({
+  args: { tableId: v.id("tables"), roundNumber: v.number() },
+  handler: async (ctx, { tableId, roundNumber }) => {
+    const table = await ctx.db.get(tableId);
+    if (!table || table.status !== "dealer_turn" || table.roundNumber !== roundNumber) return;
+
+    const dealerHand = { ...table.dealer };
+    let updatedDeck = [...table.deck];
+    const newHistory = [...table.history];
+    let runningCount = table.runningCount ?? 0;
+
+    const dealerScore = getHandValue(dealerHand.cards);
+
+    if (dealerScore < 17) {
+      // Draw card (safe threshold check for 3-deck shoe)
+      if (updatedDeck.length < 15) {
+        updatedDeck = createDeck();
+        newHistory.push("카드 슈에 카드가 부족하여 새로 셔플했습니다!");
+        runningCount = 0;
+      }
+      const drawn = updatedDeck.pop()!;
+      runningCount += getCardCountValue(drawn);
+      dealerHand.cards.push(drawn);
+      
+      const newScore = getHandValue(dealerHand.cards);
+      let logMsg = `딜러가 ${drawn.value}${drawn.suit} 카드를 드로우했습니다 (합계: ${newScore})`;
+      
+      if (newScore > 21) {
+        dealerHand.status = "busted";
+        logMsg += " (버스트!)";
+      } else if (newScore >= 17) {
+        dealerHand.status = "stood";
+        logMsg += " (스탠드)";
+      }
+
+      newHistory.push(logMsg);
+
+      await ctx.db.patch(tableId, {
+        dealer: dealerHand,
+        deck: updatedDeck,
+        history: newHistory.slice(-15),
+        lastUpdated: Date.now(),
+        runningCount,
+      });
+
+      if (newScore < 17) {
+        // Schedule next hit
+        await ctx.scheduler.runAfter(1200, internal.blackjack.dealerHitLoop, {
+          tableId,
+          roundNumber,
+        });
+      } else {
+        // Dealer is done, schedule settlement
+        await ctx.scheduler.runAfter(2000, internal.blackjack.settleRound, {
+          tableId,
+          roundNumber,
+        });
+      }
+    } else {
+      // Just in case dealer is already 17+, settle
+      await ctx.scheduler.runAfter(0, internal.blackjack.settleRound, {
+        tableId,
+        roundNumber,
+      });
+    }
+  },
+});
+
+// Helper to calculate payout and log string for a single hand
+function calculateHandPayout(
+  handCards: Card[],
+  handStatus: string,
+  handBet: number,
+  dealerCards: Card[],
+  dealerStatus: string
+): { payout: number; outcome: string } {
+  const userScore = getHandValue(handCards);
+  const dealerScore = getHandValue(dealerCards);
+  let payout = 0;
+  let outcome = "";
+
+  if (handStatus === "busted") {
+    payout = 0;
+    outcome = "패배 (버스트)";
+  } else if (dealerStatus === "busted") {
+    if (handStatus === "blackjack") {
+      payout = Math.floor(handBet * 2.5); // Natural Blackjack pays 3:2
+      outcome = "블랙잭 승리! (+$" + (payout - handBet) + ")";
+    } else {
+      payout = handBet * 2; // Standard Win pays 1:1
+      outcome = "승리 (+$" + (payout - handBet) + ")";
+    }
+  } else {
+    // Compare values
+    if (handStatus === "blackjack" && dealerStatus !== "blackjack") {
+      payout = Math.floor(handBet * 2.5);
+      outcome = "블랙잭 승리! (+$" + (payout - handBet) + ")";
+    } else if (userScore > dealerScore) {
+      payout = handBet * 2;
+      outcome = "승리 (+$" + (payout - handBet) + ")";
+    } else if (userScore < dealerScore) {
+      payout = 0;
+      outcome = "패배 (-$" + handBet + ")";
+    } else {
+      // Tie score
+      if (handStatus === "blackjack" && dealerStatus === "blackjack") {
+        payout = handBet; // Push
+        outcome = "푸시 (양측 블랙잭)";
+      } else if (handStatus !== "blackjack" && dealerStatus === "blackjack") {
+        payout = 0; // Dealer blackjack beats 21
+        outcome = "패배 (딜러 블랙잭)";
+      } else {
+        payout = handBet; // Standard Push
+        outcome = "푸시";
+      }
+    }
+  }
+  return { payout, outcome };
+}
 
 // Settle active round payouts and schedule the next round
 export const settleRound = internalMutation({
@@ -909,7 +1229,6 @@ export const settleRound = internalMutation({
     const table = await ctx.db.get(tableId);
     if (!table || table.status !== "dealer_turn" || table.roundNumber !== roundNumber) return;
 
-    const dealerScore = getHandValue(table.dealer.cards);
     const dealerStatus = table.dealer.status;
 
     const updatedSeats = [...table.seats];
@@ -919,70 +1238,57 @@ export const settleRound = internalMutation({
       const seat = updatedSeats[i];
       if (seat.userId === null || seat.bet === 0) continue;
 
-      const userScore = getHandValue(seat.cards);
-      let payout = 0;
-      let outcome = "";
+      let totalPayout = 0;
+      let outcomeMsg = "";
 
-      if (seat.status === "busted") {
-        payout = 0;
-        outcome = "lost (Bust)";
-      } else if (dealerStatus === "busted") {
-        if (seat.status === "blackjack") {
-          payout = Math.floor(seat.bet * 2.5); // Natural Blackjack pays 3:2
-          outcome = "won with Blackjack! ($" + (payout - seat.bet) + ")";
-        } else {
-          payout = seat.bet * 2; // Standard Win pays 1:1
-          outcome = "won ($" + (payout - seat.bet) + ")";
-        }
-      } else {
-        // Compare values
-        if (seat.status === "blackjack" && dealerStatus !== "blackjack") {
-          payout = Math.floor(seat.bet * 2.5);
-          outcome = "won with Blackjack! ($" + (payout - seat.bet) + ")";
-        } else if (userScore > dealerScore) {
-          payout = seat.bet * 2;
-          outcome = "won ($" + (payout - seat.bet) + ")";
-        } else if (userScore < dealerScore) {
-          payout = 0;
-          outcome = "lost ($" + seat.bet + ")";
-        } else {
-          // Tie score
-          if (seat.status === "blackjack" && dealerStatus === "blackjack") {
-            payout = seat.bet; // Push
-            outcome = "pushed (Both Blackjack)";
-          } else if (seat.status !== "blackjack" && dealerStatus === "blackjack") {
-            payout = 0; // Dealer blackjack beats 21
-            outcome = "lost (Dealer Blackjack)";
-          } else {
-            payout = seat.bet; // Standard Push
-            outcome = "pushed";
-          }
-        }
+      // 1. Settle main hand
+      const mainResult = calculateHandPayout(seat.cards, seat.status, seat.bet, table.dealer.cards, dealerStatus);
+      totalPayout += mainResult.payout;
+      outcomeMsg += `메인: ${mainResult.outcome}`;
+
+      // 2. Settle split hand if it exists
+      const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
+      if (isSplit && seat.splitBet) {
+        const splitResult = calculateHandPayout(seat.splitCards!, seat.splitStatus || "stood", seat.splitBet, table.dealer.cards, dealerStatus);
+        totalPayout += splitResult.payout;
+        outcomeMsg += ` | 스플릿: ${splitResult.outcome}`;
       }
 
       // Add payout back to seat balance
-      const newSeatBalance = seat.balance + payout;
+      const newSeatBalance = seat.balance + totalPayout;
+      const totalBet = seat.bet + (seat.splitBet || 0);
+
+      let seatStatus = "lost";
+      let lastActionText = "패배";
+      if (totalPayout > totalBet) {
+        seatStatus = "won";
+        lastActionText = "승리";
+      } else if (totalPayout === totalBet) {
+        seatStatus = "push";
+        lastActionText = "푸시";
+      }
+
       updatedSeats[i] = {
         ...seat,
         balance: newSeatBalance,
-        status: payout > seat.bet ? "won" : (payout === seat.bet ? "push" : "lost"),
-        lastAction: payout > seat.bet ? "Win" : (payout === seat.bet ? "Push" : "Loss"),
+        status: seatStatus,
+        lastAction: lastActionText,
       };
 
       // Sync user profile balance
       await ctx.db.patch(seat.userId as any, { balance: newSeatBalance });
 
-      newHistory.push(`Seat ${i+1} (${seat.nickname}) ${outcome}`);
+      newHistory.push(`${i+1}번 자리 (${seat.nickname}) - ${outcomeMsg}`);
     }
 
-    // Increment round number and schedule next round betting in 8 seconds
+    // Increment round number and schedule next round betting in 3 seconds review time
     const nextRound = table.roundNumber + 1;
     
     await ctx.db.patch(tableId, {
       seats: updatedSeats,
       history: newHistory.slice(-15),
       status: "round_over",
-      timer: Date.now() + 3000, // 3 seconds review time
+      timer: Date.now() + 3000,
       lastUpdated: Date.now(),
     });
 
@@ -1004,14 +1310,14 @@ export const prepareNextRound = internalMutation({
 
     // Reset bets, cards and actions for all seated players.
     // If a player has $0 balance, they are automatically stood up (kicked from seat).
-    const newHistory = [...table.history, "Starting next round... Place your bets!"];
+    const newHistory = [...table.history, "다음 라운드를 시작합니다... 베팅해주세요!"];
 
     for (let i = 0; i < 8; i++) {
       const seat = updatedSeats[i];
       if (seat.userId === null) continue;
 
       if (seat.balance <= 0) {
-        newHistory.push(`${seat.nickname} was stood up (Out of money!)`);
+        newHistory.push(`${seat.nickname}님이 자금 부족으로 강제 퇴장되었습니다!`);
         updatedSeats[i] = {
           userId: null,
           nickname: null,
@@ -1019,7 +1325,7 @@ export const prepareNextRound = internalMutation({
           bet: 0,
           cards: [],
           status: "idle",
-          lastAction: "kicked",
+          lastAction: "퇴장당함",
         };
       } else {
         updatedSeats[i] = {
@@ -1028,6 +1334,10 @@ export const prepareNextRound = internalMutation({
           cards: [],
           status: "idle",
           lastAction: "",
+          splitCards: undefined,
+          splitBet: undefined,
+          splitStatus: undefined,
+          activeHandIndex: undefined,
         };
       }
     }
@@ -1038,22 +1348,16 @@ export const prepareNextRound = internalMutation({
       await ctx.db.delete(tableId);
       return;
     } else {
-      // Transition to next betting phase
+      // Transition to next betting phase (no timer)
       await ctx.db.patch(tableId, {
         seats: updatedSeats,
         dealer: { cards: [], status: "playing" },
         status: "betting",
         activeSeatIndex: -1,
-        timer: Date.now() + 15000, // 15 seconds to bet
+        timer: undefined,
         roundNumber,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
-      });
-
-      // Schedule end betting timeout
-      await ctx.scheduler.runAfter(15000, internal.blackjack.endBettingTimeout, {
-        tableId,
-        roundNumber,
       });
     }
   },
