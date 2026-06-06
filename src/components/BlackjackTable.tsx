@@ -18,6 +18,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   const leaveTable = useMutation(api.blackjack.leaveTable);
   const placeBet = useMutation(api.blackjack.placeBet);
   const playAction = useMutation(api.blackjack.playAction);
+  const refillBalance = useMutation(api.users.refillBalance);
 
   const table = dbTable;
 
@@ -25,6 +26,19 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   const [currentBet, setCurrentBet] = useState<number>(0);
   const [betError, setBetError] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isRefilling, setIsRefilling] = useState<boolean>(false);
+
+  const handleRefill = async () => {
+    setIsRefilling(true);
+    try {
+      await refillBalance();
+    } catch (err: any) {
+      alert(err.message || "Failed to refill.");
+    } finally {
+      setIsRefilling(false);
+    }
+  };
+
 
   // Find player seat
   const playerSeatIndex = table
@@ -165,6 +179,31 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                 <span className="btn-text">Stand Up</span>
               </button>
             )}
+            {!isSeated && (user.balance ?? 0) < 1000 && (
+              <button 
+                className="btn-primary refill-btn animate-pulse" 
+                onClick={handleRefill}
+                disabled={isRefilling}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                  boxShadow: "0 2px 6px rgba(245, 158, 11, 0.4)",
+                  border: "none",
+                  color: "#fff",
+                  fontWeight: "bold",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  marginRight: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}
+              >
+                <Coins size={12} />
+                {isRefilling ? "Refilling..." : "Refill"}
+              </button>
+            )}
             <div className="player-badge">
               <Coins size={14} className="gold" />
               <span>
@@ -194,8 +233,32 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
         {/* Action panel HUD footer */}
         <footer className="table-footer glass">
           {!isSeated ? (
-            <div className="footer-message">
+            <div className="footer-message" style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
               <p>You are spectating. Click an empty seat circle on the table felt above to sit down.</p>
+              {(user.balance ?? 0) < 1000 && (
+                <button 
+                  className="btn-primary refill-btn animate-pulse" 
+                  onClick={handleRefill}
+                  disabled={isRefilling}
+                  style={{
+                    padding: "6px 16px",
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                    boxShadow: "0 4px 12px rgba(245, 158, 11, 0.4)",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: "bold",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    marginTop: "4px"
+                  }}
+                >
+                  <Coins size={14} />
+                  {isRefilling ? "Refilling..." : "Refill Free Chips ($3,000)"}
+                </button>
+              )}
             </div>
           ) : table.status === "waiting" ? (
             <div className="footer-message">

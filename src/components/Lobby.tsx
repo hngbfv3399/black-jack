@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { LogOut, Plus, RefreshCw, Spade, Trophy } from "lucide-react";
+import { LogOut, Plus, RefreshCw, Spade, Trophy, Coins } from "lucide-react";
 
 interface LobbyProps {
   user: any;
@@ -13,10 +13,24 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
   const dbTables = useQuery(api.blackjack.listTables);
   const leaderboard = useQuery(api.users.getLeaderboard);
   const seedDefaultTable = useMutation(api.blackjack.seedDefaultTable);
+  const refillBalance = useMutation(api.users.refillBalance);
   
   const [tableName, setTableName] = useState("");
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isRefilling, setIsRefilling] = useState(false);
+
+  const handleRefill = async () => {
+    setIsRefilling(true);
+    setError("");
+    try {
+      await refillBalance();
+    } catch (err: any) {
+      setError(err.message || "Failed to refill balance.");
+    } finally {
+      setIsRefilling(false);
+    }
+  };
 
   const handleQuickPlay = async () => {
     try {
@@ -85,7 +99,32 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
               <span className="label">YOUR CHIPS</span>
               <span className="amount">${user.balance?.toLocaleString()}</span>
             </div>
+            {(user.balance ?? 0) < 1000 && (
+              <button 
+                className="btn-primary refill-btn animate-pulse" 
+                onClick={handleRefill}
+                disabled={isRefilling}
+                style={{ 
+                  marginTop: '12px', 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+                  border: 'none',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                <Coins size={16} />
+                {isRefilling ? "Refilling..." : "Refill Free Chips ($3,000)"}
+              </button>
+            )}
           </div>
+
 
           {/* Real-time Leaderboard Ranking */}
           <div className="leaderboard-card glass">

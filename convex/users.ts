@@ -72,3 +72,31 @@ export const getLeaderboard = query({
       .slice(0, 10); // top 10 players
   },
 });
+
+// Refill user balance back to $3000 if it falls below $1000
+export const refillBalance = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("You must be signed in to perform this action.");
+    }
+
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      throw new Error("User not found.");
+    }
+
+    const currentBalance = user.balance ?? 0;
+    if (currentBalance >= 1000) {
+      throw new Error("You can only refill when your balance is below $1,000.");
+    }
+
+    await ctx.db.patch(userId, {
+      balance: 3000,
+    });
+
+    return 3000;
+  },
+});
+
