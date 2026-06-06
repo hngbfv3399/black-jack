@@ -541,13 +541,13 @@ const GameCanvas = memo(function GameCanvas({
 
       // 4. Card decks indicator text (6 decks)
       c.fillStyle = "#ffffff";
-      c.font = "bold 11px sans-serif";
+      c.font = isPortrait ? "bold 13px sans-serif" : "bold 11px sans-serif";
       c.textAlign = "left";
-      c.fillText("카드 슈 (6덱)", bx + 12, by + bh + 15);
+      c.fillText("카드 슈 (6덱)", bx + 12, by + bh + (isPortrait ? 18 : 15));
       
       c.fillStyle = "rgba(255, 255, 255, 0.6)";
-      c.font = "10px sans-serif";
-      c.fillText(`${currentCardsCount} / 312`, bx + 12, by + bh + 28);
+      c.font = isPortrait ? "12px sans-serif" : "10px sans-serif";
+      c.fillText(`${currentCardsCount} / 312`, bx + 12, by + bh + (isPortrait ? 33 : 28));
       
       c.restore();
 
@@ -569,9 +569,9 @@ const GameCanvas = memo(function GameCanvas({
         const tcStr = (tc >= 0 ? "+" : "") + tc.toFixed(1);
 
         const px = bx - 10;
-        const py = by + bh + 36;
-        const pw = 140;
-        const ph = 56;
+        const py = by + bh + (isPortrait ? 42 : 36);
+        const pw = isPortrait ? 150 : 140;
+        const ph = isPortrait ? 66 : 56;
 
         // Draw counting panel card
         c.fillStyle = "rgba(15, 23, 42, 0.85)";
@@ -584,20 +584,20 @@ const GameCanvas = memo(function GameCanvas({
 
         // Title
         c.fillStyle = "rgba(255, 255, 255, 0.6)";
-        c.font = "bold 9px sans-serif";
+        c.font = isPortrait ? "bold 11px sans-serif" : "bold 9px sans-serif";
         c.fillText("하이로 카운트 정보", px + 10, py + 14);
 
         // Stats text layout
         c.fillStyle = "#ffffff";
-        c.font = "bold 11px sans-serif";
-        c.fillText(`런닝 카운트:`, px + 10, py + 28);
-        c.fillText(`트루 카운트:`, px + 10, py + 43);
+        c.font = isPortrait ? "bold 13px sans-serif" : "bold 11px sans-serif";
+        c.fillText(`런닝 카운트:`, px + 10, py + (isPortrait ? 32 : 28));
+        c.fillText(`트루 카운트:`, px + 10, py + (isPortrait ? 50 : 43));
 
         c.textAlign = "right";
         c.fillStyle = rc >= 0 ? "#10b981" : "#ef4444";
-        c.fillText(rcStr, px + pw - 10, py + 28);
+        c.fillText(rcStr, px + pw - 10, py + (isPortrait ? 32 : 28));
         c.fillStyle = tc >= 0 ? "#10b981" : "#ef4444";
-        c.fillText(tcStr, px + pw - 10, py + 43);
+        c.fillText(tcStr, px + pw - 10, py + (isPortrait ? 50 : 43));
 
         c.restore();
       }
@@ -609,10 +609,10 @@ const GameCanvas = memo(function GameCanvas({
       c.strokeStyle = "rgba(226, 184, 66, 0.5)";
       c.lineWidth = 2;
       
-      const badgeW = 160;
-      const badgeH = 34;
+      const badgeW = isPortrait ? 190 : 160;
+      const badgeH = isPortrait ? 40 : 34;
       const badgeX = DEALER_X - badgeW / 2;
-      const badgeY = DEALER_Y - 70;
+      const badgeY = DEALER_Y - (isPortrait ? 80 : 70);
       
       // Curved banner
       c.beginPath();
@@ -621,7 +621,7 @@ const GameCanvas = memo(function GameCanvas({
       c.stroke();
 
       c.fillStyle = "#e2b842";
-      c.font = "bold 15px sans-serif";
+      c.font = isPortrait ? "bold 19px sans-serif" : "bold 15px sans-serif";
       c.textAlign = "center";
       c.textBaseline = "middle";
       
@@ -702,13 +702,13 @@ const GameCanvas = memo(function GameCanvas({
         
         // Nickname
         c.fillStyle = isPlayerSeat ? "#3b82f6" : "#ffffff";
-        c.font = "bold 15px sans-serif";
-        c.fillText(seat.nickname, coords.x, coords.y - 12);
+        c.font = isPortrait ? "bold 20px sans-serif" : "bold 15px sans-serif";
+        c.fillText(seat.nickname, coords.x, coords.y - (isPortrait ? 15 : 12));
 
         // Chips Balance
         c.fillStyle = "#e2b842";
-        c.font = "13px sans-serif";
-        c.fillText(`$${seat.balance.toLocaleString()}`, coords.x, coords.y + 4);
+        c.font = isPortrait ? "17px sans-serif" : "13px sans-serif";
+        c.fillText(`$${seat.balance.toLocaleString()}`, coords.x, coords.y + (isPortrait ? 6 : 4));
 
         // Active Bet Chips stack (if placed)
         if (seat.bet > 0) {
@@ -727,12 +727,14 @@ const GameCanvas = memo(function GameCanvas({
                         (seat.status === "lost" || seat.status === "busted" ? "#ef4444" : 
                         (seat.status === "push" ? "#94a3b8" : "rgba(15, 23, 42, 0.9)"));
           c.beginPath();
-          c.roundRect(coords.x - 30, coords.y + 16, 60, 16, 8);
+          const badgeW = isPortrait ? 76 : 60;
+          const badgeH = isPortrait ? 20 : 16;
+          c.roundRect(coords.x - badgeW / 2, coords.y + 16, badgeW, badgeH, 8);
           c.fill();
 
           c.fillStyle = "#ffffff";
-          c.font = "bold 12px sans-serif";
-          c.fillText(scoreText, coords.x, coords.y + 27);
+          c.font = isPortrait ? "bold 14px sans-serif" : "bold 12px sans-serif";
+          c.fillText(scoreText, coords.x, coords.y + (isPortrait ? 30 : 27));
           c.restore();
         }
 
@@ -824,10 +826,10 @@ const GameCanvas = memo(function GameCanvas({
         c.textAlign = "center";
         c.textBaseline = "middle";
         c.fillStyle = isHovered ? "#ffffff" : "rgba(226, 184, 66, 0.5)";
-        c.font = "12px sans-serif";
-        c.fillText("빈 자리", coords.x, coords.y - 5);
-        c.font = "10px sans-serif";
-        c.fillText("착석하기", coords.x, coords.y + 10);
+        c.font = isPortrait ? "16px sans-serif" : "12px sans-serif";
+        c.fillText("빈 자리", coords.x, coords.y - (isPortrait ? 8 : 5));
+        c.font = isPortrait ? "13px sans-serif" : "10px sans-serif";
+        c.fillText("착석하기", coords.x, coords.y + (isPortrait ? 12 : 10));
       }
 
       c.restore();
@@ -920,13 +922,14 @@ const GameCanvas = memo(function GameCanvas({
             const badgeY = seatCoords.y + offsets.badge.y;
             
             c.beginPath();
-            c.arc(badgeX, badgeY, 18, 0, Math.PI * 2);
+            const badgeR = isPortrait ? 22 : 18;
+            c.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
             c.fill();
             c.stroke();
             
             // Pulsing highlight around the active score badge
             if (isHandActive) {
-              const pulse = 18 + Math.sin(Date.now() * 0.007) * 3.5;
+              const pulse = badgeR + Math.sin(Date.now() * 0.007) * 3.5;
               c.strokeStyle = "rgba(245, 158, 11, 0.5)";
               c.lineWidth = 2;
               c.beginPath();
@@ -938,12 +941,12 @@ const GameCanvas = memo(function GameCanvas({
             if (isStrategyHelperEnabled && isHandActive) {
               c.fillStyle = "#e2b842";
               c.beginPath();
-              c.arc(badgeX + 11, badgeY - 11, 4, 0, Math.PI * 2);
+              c.arc(badgeX + (isPortrait ? 13 : 11), badgeY - (isPortrait ? 13 : 11), 4, 0, Math.PI * 2);
               c.fill();
             }
 
             c.fillStyle = "#ffffff";
-            c.font = "bold 14px sans-serif";
+            c.font = isPortrait ? "bold 18px sans-serif" : "bold 14px sans-serif";
             c.textAlign = "center";
             c.textBaseline = "middle";
 
@@ -1010,17 +1013,17 @@ const GameCanvas = memo(function GameCanvas({
 
       // Heading
       c.fillStyle = "#e2b842";
-      c.font = "bold 10px sans-serif";
-      c.fillText("테이블 로그", logX + 12, logY + 18);
+      c.font = isPortrait ? "bold 14px sans-serif" : "bold 10px sans-serif";
+      c.fillText("테이블 로그", logX + 12, logY + (isPortrait ? 22 : 18));
 
       // Lines
       c.fillStyle = "#cbd5e1";
-      c.font = "10px sans-serif";
+      c.font = isPortrait ? "13px sans-serif" : "10px sans-serif";
       c.textAlign = "left";
       
       const visibleLogs = logs.slice(-5); // show last 5 lines
       visibleLogs.forEach((log: string, index: number) => {
-        c.fillText(log, logX + 12, logY + 36 + index * 16);
+        c.fillText(log, logX + 12, logY + (isPortrait ? 44 : 36) + index * (isPortrait ? 20 : 16));
       });
 
       // Turn countdown timer progress bar (if timer set)
@@ -1035,25 +1038,25 @@ const GameCanvas = memo(function GameCanvas({
         if (ratio > 0) {
           // Label
           c.fillStyle = "#e2b842";
-          c.font = "bold 11px sans-serif";
+          c.font = isPortrait ? "bold 14px sans-serif" : "bold 11px sans-serif";
           c.fillText(
             table.status === "betting" ? "배팅 시간" : (table.status === "round_over" ? "다음 라운드 대기" : "남은 시간"),
             isPortrait ? WIDTH - 180 : WIDTH - 150,
-            HEIGHT - 45
+            HEIGHT - (isPortrait ? 50 : 45)
           );
 
           // Bar outer
           c.strokeStyle = "rgba(255,255,255,0.2)";
           c.lineWidth = 1;
           c.beginPath();
-          c.roundRect(isPortrait ? WIDTH - 180 : WIDTH - 150, HEIGHT - 35, isPortrait ? 140 : 130, 8, 4);
+          c.roundRect(isPortrait ? WIDTH - 180 : WIDTH - 150, HEIGHT - (isPortrait ? 38 : 35), isPortrait ? 140 : 130, 8, 4);
           c.stroke();
 
           // Bar inner (progress color transitions from green to red)
           const barColor = ratio > 0.4 ? "#10b981" : (ratio > 0.2 ? "#f59e0b" : "#ef4444");
           c.fillStyle = barColor;
           c.beginPath();
-          c.roundRect(isPortrait ? WIDTH - 180 : WIDTH - 150, HEIGHT - 35, (isPortrait ? 140 : 130) * ratio, 8, 4);
+          c.roundRect(isPortrait ? WIDTH - 180 : WIDTH - 150, HEIGHT - (isPortrait ? 38 : 35), (isPortrait ? 140 : 130) * ratio, 8, 4);
           c.fill();
         }
       }
