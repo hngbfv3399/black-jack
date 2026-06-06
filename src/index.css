@@ -714,8 +714,8 @@ h1, h2, h3, h4 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  font-size: 12px;
+  padding: 9px 16px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -727,12 +727,12 @@ h1, h2, h3, h4 {
 
 .table-info .name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 16px;
   color: white;
 }
 
 .table-info .round {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -742,17 +742,17 @@ h1, h2, h3, h4 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 9px 14px;
+  font-size: 13px;
   cursor: pointer;
 }
 
 .player-badge {
   background: rgba(2, 6, 17, 0.45);
   border: 1px solid var(--panel-border);
-  padding: 8px 14px;
+  padding: 9px 16px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -778,7 +778,7 @@ h1, h2, h3, h4 {
 
 .canvas-wrapper {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1350px;
   background: transparent;
   border-radius: 20px;
   overflow: hidden;
@@ -808,12 +808,12 @@ h1, h2, h3, h4 {
 /* Table Footer Action HUDs */
 .table-footer {
   margin: 0 16px 16px;
-  padding: 20px 32px;
+  padding: 22px 36px;
   border-radius: 12px;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 110px;
+  min-height: 125px;
   z-index: 10;
 }
 
@@ -867,14 +867,14 @@ h1, h2, h3, h4 {
 
 /* Casino Chips Style Styling */
 .chip-btn {
-  width: 50px;
-  height: 50px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   border: 2px dashed #ffffff;
   color: white;
   font-family: var(--font-brand);
   font-weight: 800;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
   transition: all 0.15s ease;
@@ -913,13 +913,13 @@ h1, h2, h3, h4 {
 }
 
 .bet-display .label {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-secondary);
 }
 
 .bet-display .val {
   font-family: var(--font-brand);
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--gold);
 }
@@ -930,8 +930,8 @@ h1, h2, h3, h4 {
 }
 
 .confirm-bet-btn {
-  padding: 10px 24px;
-  font-size: 14px;
+  padding: 12px 28px;
+  font-size: 16px;
   cursor: pointer;
 }
 
@@ -970,8 +970,8 @@ h1, h2, h3, h4 {
 }
 
 .action-buttons button {
-  padding: 12px 32px;
-  font-size: 15px;
+  padding: 14px 40px;
+  font-size: 17px;
   cursor: pointer;
 }
 
