@@ -3,7 +3,11 @@ const PRECACHE_ASSETS = [
   "/",
   "/index.html",
   "/favicon.svg",
-  "/manifest.json"
+  "/favicon.png",
+  "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png"
 ];
 
 // Install Event - cache core static shell assets
