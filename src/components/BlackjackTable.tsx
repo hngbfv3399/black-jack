@@ -107,6 +107,17 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
         : (playerSeatIndices[0] ?? -1));
   const playerSeat = playerSeatIndex !== -1 && table ? table.seats[playerSeatIndex] : null;
 
+  // Calculate dynamic chip values rack
+  let chipMultiplier = 1;
+  const playerBal = playerSeat ? playerSeat.balance : (user.balance ?? 3000);
+  if (playerBal >= 125000) {
+    chipMultiplier = 125;
+  } else if (playerBal >= 25000) {
+    chipMultiplier = 25;
+  } else if (playerBal >= 5000) {
+    chipMultiplier = 5;
+  }
+
   // Filter seats where player has insurance decision pending
   const myInsurancePendingSeats = table
     ? table.seats
@@ -116,7 +127,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
 
   // Calculate Card Counting metrics for betting recommendation
   let trueCount = 0;
-  let adviceBet = 25;
+  let adviceBet = 10 * chipMultiplier;
   let adviceStatus = "";
   let adviceMessage = "";
   let adviceStatusColor = "";
@@ -127,21 +138,24 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     const decksRemaining = Math.max(0.1, currentCardsCount / 52);
     trueCount = runningCount / decksRemaining;
 
+    const baseUnit = 10 * chipMultiplier;
+
     if (trueCount <= -1) {
-      adviceBet = 10;
+      adviceBet = baseUnit;
       adviceStatus = "딜러 유리 (카운트 낮음)";
-      adviceMessage = "낮은 카드들이 많이 빠져 딜러에게 유리합니다. 손실 최소화를 위해 최소 베팅($10)을 추천합니다.";
+      adviceMessage = `높은 카드들이 많이 빠져 딜러에게 유리합니다. 손실 최소화를 위해 최소 베팅($${adviceBet.toLocaleString()})을 추천합니다.`;
       adviceStatusColor = "#ef4444"; // red
     } else if (trueCount > 1) {
-      const multiplier = Math.round(trueCount);
-      adviceBet = 25 * multiplier;
+      const roundedTc = Math.round(trueCount);
+      const units = Math.max(3, Math.min(10, roundedTc + 1));
+      adviceBet = baseUnit * units;
       adviceStatus = "플레이어 유리 (카운트 높음)";
-      adviceMessage = `높은 카드들이 많이 남아 플레이어에게 유리합니다. 적극적인 비례 배팅($${adviceBet})을 추천합니다.`;
+      adviceMessage = `낮은 카드들이 많이 빠져 높은 카드들이 상대적으로 많이 남아 플레이어에게 유리합니다. 적극적인 비례 배팅($${adviceBet.toLocaleString()})을 추천합니다.`;
       adviceStatusColor = "#10b981"; // green
     } else {
-      adviceBet = 25;
+      adviceBet = baseUnit * 2;
       adviceStatus = "중립 (카운트 평탄)";
-      adviceMessage = "카드가 골고루 섞여 있어 중립 상태입니다. 기본 베팅($25)을 추천합니다.";
+      adviceMessage = `카드가 골고루 섞여 있어 중립 상태입니다. 기본 베팅($${adviceBet.toLocaleString()})을 추천합니다.`;
       adviceStatusColor = "var(--gold)"; // gold
     }
 
@@ -211,17 +225,6 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     }
     onBackToLobby();
   };
-
-  // Calculate dynamic chip values rack
-  let chipMultiplier = 1;
-  const playerBal = playerSeat ? playerSeat.balance : (user.balance ?? 3000);
-  if (playerBal >= 125000) {
-    chipMultiplier = 125;
-  } else if (playerBal >= 25000) {
-    chipMultiplier = 25;
-  } else if (playerBal >= 5000) {
-    chipMultiplier = 5;
-  }
   const baseChipsList = [10, 50, 100, 500, 1000];
   const activeChipsList = baseChipsList.map(c => c * chipMultiplier);
 

@@ -96,6 +96,25 @@ export const refillBalance = mutation({
       balance: 3000,
     });
 
+    // Synchronize the refilled balance to any active table seats this user occupies
+    const activeTables = await ctx.db.query("tables").collect();
+    for (const table of activeTables) {
+      let seatModified = false;
+      const updatedSeats = [...table.seats];
+      for (let i = 0; i < 12; i++) {
+        if (updatedSeats[i].userId === userId) {
+          updatedSeats[i].balance = 3000;
+          seatModified = true;
+        }
+      }
+      if (seatModified) {
+        await ctx.db.patch(table._id, {
+          seats: updatedSeats,
+          lastUpdated: Date.now(),
+        });
+      }
+    }
+
     return 3000;
   },
 });

@@ -667,6 +667,13 @@ export const playAction = mutation({
       }
       updatedSeats[seatIndex] = updatedSeat;
 
+      // Sync balance across all seats of this user
+      for (let i = 0; i < 12; i++) {
+        if (updatedSeats[i].userId === userId) {
+          updatedSeats[i].balance = newBalance;
+        }
+      }
+
       let logMsg = `${seat.nickname} 더블 다운: $${newBet}로 배팅 증가 (${isSplitHandActive ? '스플릿 핸드' : '메인 핸드'}), 카드: ${drawnCard.value}${drawnCard.suit}`;
       if (newScore > 21) logMsg += " (버스트!)";
 
@@ -729,6 +736,13 @@ export const playAction = mutation({
         activeHandIndex: 0,
         lastAction: "스플릿",
       };
+
+      // Sync balance across all seats of this user
+      for (let i = 0; i < 12; i++) {
+        if (updatedSeats[i].userId === userId) {
+          updatedSeats[i].balance = newBalance;
+        }
+      }
 
       newHistory.push(`${seat.nickname}님이 ${card0.value} 카드를 스플릿했습니다. 1번 핸드: ${drawn1.value}${drawn1.suit}, 2번 핸드: ${drawn2.value}${drawn2.suit}`);
 
