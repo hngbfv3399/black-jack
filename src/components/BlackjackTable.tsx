@@ -48,6 +48,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   const [lastBetExists, setLastBetExists] = useState<boolean>(() => {
     return !!localStorage.getItem(`last_bet_${user._id}`);
   });
+  const [isBettingPanelExpanded, setIsBettingPanelExpanded] = useState<boolean>(true);
 
   const handleRefill = async () => {
     setIsRefilling(true);
@@ -171,6 +172,13 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
       setSideBetPP(0);
       setSideBet213(0);
       setBetError("");
+    }
+  }, [table?.status]);
+
+  // Auto-expand betting panel when round enters betting phase
+  useEffect(() => {
+    if (table?.status === "betting") {
+      setIsBettingPanelExpanded(true);
     }
   }, [table?.status]);
 
@@ -392,7 +400,15 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
         </div>
 
         {/* Action panel HUD footer */}
-        <footer className="table-footer glass">
+        <footer className={`table-footer glass ${table?.status === "betting" && isSeated && !(playerSeat && playerSeat.bet > 0) ? "betting-phase" : ""} ${isBettingPanelExpanded ? "expanded" : "collapsed"}`}>
+          {table?.status === "betting" && isSeated && !(playerSeat && playerSeat.bet > 0) && (
+            <div className="bottom-sheet-handle" onClick={() => setIsBettingPanelExpanded(!isBettingPanelExpanded)}>
+              <div className="handle-bar"></div>
+              <span className="handle-text">
+                {isBettingPanelExpanded ? "베팅 패널 접기" : `베팅 패널 열기 (보유 칩: $${playerSeat?.balance.toLocaleString()})`}
+              </span>
+            </div>
+          )}
           {!isSeated ? (
             <div className="footer-message" style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
               <p>관전 중입니다. 테이블 위 빈 자리를 클릭하여 착석하세요.</p>

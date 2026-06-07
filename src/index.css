@@ -1712,4 +1712,82 @@ h1, h2, h3, h4 {
   line-height: 1.4;
 }
 
+/* Bottom Sheet for Mobile Betting Console */
+.bottom-sheet-handle {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .table-footer.betting-phase {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.98) !important;
+    border-top: 1.5px solid rgba(226, 184, 66, 0.45);
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 16px 20px 16px !important;
+    box-sizing: border-box;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    min-height: 0 !important;
+  }
+  
+  .table-footer.betting-phase.collapsed {
+    transform: translateY(calc(100% - 46px)) !important;
+  }
+  
+  .table-footer.betting-phase.expanded {
+    transform: translateY(0) !important;
+  }
+  
+  .bottom-sheet-handle {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 0 6px 0;
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 8px;
+    background: transparent;
+    user-select: none;
+  }
+  
+  .handle-bar {
+    width: 36px;
+    height: 4px;
+    background: rgba(226, 184, 66, 0.4);
+    border-radius: 2px;
+    margin-bottom: 4px;
+    transition: background 0.2s;
+  }
+  
+  .bottom-sheet-handle:hover .handle-bar {
+    background: var(--gold);
+  }
+  
+  .handle-text {
+    font-size: 11px;
+    color: var(--gold);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .table-container {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  
+  .gameplay-area {
+    padding-bottom: 60px !important;
+  }
+}
+
 
