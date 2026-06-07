@@ -1699,4 +1699,86 @@ h1, h2, h3, h4 {
   line-height: 1.4;
 }
 
+/* Landscape Warning Overlay */
+.landscape-warning-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
+  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  color: #fff;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* Show only on small devices in portrait orientation */
+@media (max-width: 900px) and (orientation: portrait) {
+  .landscape-warning-overlay {
+    display: flex;
+  }
+  
+  .table-container {
+    display: none !important;
+  }
+}
+
+.landscape-warning-overlay h2 {
+  font-family: 'Outfit', 'Inter', sans-serif;
+  color: var(--gold);
+  margin: 20px 0 10px 0;
+  font-size: 1.5rem;
+  text-shadow: 0 0 10px rgba(226, 184, 66, 0.3);
+}
+
+.landscape-warning-overlay p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.phone-icon-wrapper {
+  background: rgba(226, 184, 66, 0.1);
+  border: 1px solid rgba(226, 184, 66, 0.25);
+  border-radius: 50%;
+  padding: 20px;
+  box-shadow: 0 0 20px rgba(226, 184, 66, 0.1);
+  animation: pulse-gold-glow 2s infinite ease-in-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.phone-icon {
+  fill: var(--gold);
+  animation: rotate-phone-icon 2s infinite ease-in-out;
+}
+
+@keyframes rotate-phone-icon {
+  0% {
+    transform: rotate(0deg);
+  }
+  40%, 100% {
+    transform: rotate(-90deg);
+  }
+}
+
+@keyframes pulse-gold-glow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(226, 184, 66, 0.1);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(226, 184, 66, 0.25);
+  }
+}
+
 
