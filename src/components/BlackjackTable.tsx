@@ -350,27 +350,9 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   };
 
   return (
-    <>
-      <div className="landscape-warning-overlay">
-        <div className="warning-content">
-          <div className="phone-icon-wrapper">
-            <svg className="phone-icon" viewBox="0 0 24 24" width="50" height="50">
-              <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z" />
-            </svg>
-          </div>
-          <h2>화면을 가로로 회전해 주세요</h2>
-          <p>
-            원활한 블랙잭 게임 플레이를 위해<br />
-            기기를 가로 방향으로 회전해 주세요.<br />
-            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '8px', display: 'block' }}>
-              (화면 세로 방향 고정 모드가 켜져 있다면 해제해 주세요)
-            </span>
-          </p>
-        </div>
-      </div>
-      <div className="table-container" style={{ display: "flex", flexDirection: "row", width: "100%", overflow: "hidden" }}>
+    <div className="table-container" style={{ width: "100%", height: "100dvh", overflow: "hidden" }}>
       {/* Table Side */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh", position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", minHeight: 0, position: "relative" }}>
         <TableHeader
           tableName={table.name}
           roundNumber={table.roundNumber}
@@ -797,6 +779,5 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
 
       <StrategyGuideModal isOpen={isStrategyOpen} onClose={() => setIsStrategyOpen(false)} />
     </div>
-    </>
   );
 }
