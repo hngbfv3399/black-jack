@@ -70,6 +70,7 @@ interface GameCanvasProps {
   onSelectSeat?: (seatIndex: number) => void;
   isStrategyHelperEnabled: boolean;
   isBettingHelperEnabled: boolean;
+  isBettingPanelExpanded?: boolean;
 }
 
 // Animation item type
@@ -93,7 +94,8 @@ const GameCanvas = memo(function GameCanvas({
   onJoinSeat, 
   onSelectSeat,
   isStrategyHelperEnabled, 
-  isBettingHelperEnabled 
+  isBettingHelperEnabled,
+  isBettingPanelExpanded = true
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -338,6 +340,7 @@ const GameCanvas = memo(function GameCanvas({
       const rect = container.getBoundingClientRect();
       
       const containerWidth = rect.width;
+      const containerHeight = rect.height;
       const isPortraitMode = window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
       
       setIsPortrait(isPortraitMode);
@@ -345,12 +348,35 @@ const GameCanvas = memo(function GameCanvas({
       const activeWidth = isPortraitMode ? 800 : 1200;
       const activeHeight = isPortraitMode ? 1200 : 800;
       
-      canvas.width = containerWidth * dpr;
-      canvas.height = (containerWidth * (activeHeight / activeWidth)) * dpr;
-      canvas.style.width = `${containerWidth}px`;
-      canvas.style.height = `${containerWidth * (activeHeight / activeWidth)}px`;
+      // Measure header and footer bounds dynamically to center in visible area
+      const headerEl = document.querySelector(".table-header");
+      const footerEl = document.querySelector(".table-footer");
+      const headerRect = headerEl ? headerEl.getBoundingClientRect() : null;
+      const footerRect = footerEl ? footerEl.getBoundingClientRect() : null;
 
-      ctx.scale(dpr * (containerWidth / activeWidth), dpr * (containerWidth / activeWidth));
+      // Calculate vertical boundary offsets relative to the game container
+      const topOffset = headerRect ? (headerRect.bottom - rect.top) : (isPortraitMode ? 60 : 80);
+      const bottomOffset = footerRect ? (rect.bottom - footerRect.top) : (isPortraitMode ? 60 : 150);
+      
+      const visibleHeight = Math.max(200, containerHeight - topOffset - bottomOffset);
+      
+      // Find the best fit scale factor
+      const scale = Math.min(containerWidth / activeWidth, visibleHeight / activeHeight);
+      
+      const canvasWidth = activeWidth * scale;
+      const canvasHeight = activeHeight * scale;
+      
+      canvas.width = canvasWidth * dpr;
+      canvas.height = canvasHeight * dpr;
+      
+      // Position absolute to float and center in the remaining felt area
+      canvas.style.position = "absolute";
+      canvas.style.width = `${canvasWidth}px`;
+      canvas.style.height = `${canvasHeight}px`;
+      canvas.style.left = `${(containerWidth - canvasWidth) / 2}px`;
+      canvas.style.top = `${topOffset + (visibleHeight - canvasHeight) / 2}px`;
+
+      ctx.scale(dpr * scale, dpr * scale);
     };
 
     resizeCanvas();
@@ -1071,7 +1097,7 @@ const GameCanvas = memo(function GameCanvas({
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, [table, hoveredSeat, currentUserId, isPortrait]);
+  }, [table, hoveredSeat, currentUserId, isPortrait, isBettingPanelExpanded]);
 
   // Click Handler for Seating
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {

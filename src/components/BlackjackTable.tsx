@@ -389,6 +389,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
             }}
             isStrategyHelperEnabled={isStrategyHelperEnabled}
             isBettingHelperEnabled={isBettingHelperEnabled}
+            isBettingPanelExpanded={isBettingPanelExpanded}
           />
           
           {/* Seat empty prompt (for spectators) */}
@@ -450,206 +451,216 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
               </div>
             ) : (
               <div className="betting-hud animate-slide-up" style={{ width: "100%" }}>
-                {/* Seat selector header */}
-                {playerSeatIndices.length > 1 && (
-                  <div className="seat-tabs" style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
-                    {playerSeatIndices.map((idx) => {
-                      const seatObj = table.seats[idx];
-                      const hasBet = seatObj.bet > 0;
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => {
-                            setSelectedBettingSeatIndex(idx);
-                            setBetError("");
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: "6px 12px",
-                            fontSize: "12px",
-                            borderRadius: "6px",
-                            border: "1px solid",
-                            background: selectedBettingSeatIndex === idx ? "rgba(226, 184, 66, 0.2)" : "rgba(255,255,255,0.04)",
-                            borderColor: selectedBettingSeatIndex === idx ? "var(--gold)" : "rgba(255,255,255,0.1)",
-                            color: selectedBettingSeatIndex === idx ? "var(--gold)" : "white",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {idx + 1}번 자리 {hasBet ? `($${seatObj.bet})` : "(베팅 대기)"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="hud-label" style={{ marginTop: "4px" }}>
-                  <span>{playerSeatIndex + 1}번 자리 베팅을 진행해주세요</span>
-                  <span className="balance-hint">보유 칩: ${playerSeat?.balance.toLocaleString()}</span>
-                </div>
-
-                {isBettingHelperEnabled && (
-                  <div className="betting-recommendation-banner glass animate-fade-in">
-                    <div className="rec-header">
-                      <div className="rec-title-group">
-                        <Coins size={14} style={{ color: adviceStatusColor }} />
-                        <span className="rec-label">추천 베팅:</span>
-                        <span className="rec-status" style={{ color: adviceStatusColor }}>{adviceStatus}</span>
+                <div className="betting-hud-columns">
+                  
+                  {/* Left Column (Info & Strategy Advice) */}
+                  <div className="betting-hud-left-col">
+                    {/* Seat selector header */}
+                    {playerSeatIndices.length > 1 && (
+                      <div className="seat-tabs" style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
+                        {playerSeatIndices.map((idx) => {
+                          const seatObj = table.seats[idx];
+                          const hasBet = seatObj.bet > 0;
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setSelectedBettingSeatIndex(idx);
+                                setBetError("");
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "6px 12px",
+                                fontSize: "12px",
+                                borderRadius: "6px",
+                                border: "1px solid",
+                                background: selectedBettingSeatIndex === idx ? "rgba(226, 184, 66, 0.2)" : "rgba(255,255,255,0.04)",
+                                borderColor: selectedBettingSeatIndex === idx ? "var(--gold)" : "rgba(255,255,255,0.1)",
+                                color: selectedBettingSeatIndex === idx ? "var(--gold)" : "white",
+                                cursor: "pointer",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              {idx + 1}번 자리 {hasBet ? `($${seatObj.bet})` : "(베팅 대기)"}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div className="rec-action-group">
-                        <span className="rec-tc">
-                           (TC: {trueCount >= 0 ? "+" : ""}{trueCount.toFixed(1)})
-                        </span>
-                        <button
-                          onClick={() => {
-                            if (playerSeat) {
-                              setCurrentBet(adviceBet);
-                              setBetError("");
-                            }
-                          }}
-                          className="btn-apply-bet"
-                          disabled={isSubmitting}
-                        >
-                          적용 (${adviceBet})
-                        </button>
+                    )}
+
+                    <div className="hud-label" style={{ marginTop: "4px" }}>
+                      <span>{playerSeatIndex + 1}번 자리 베팅을 진행해주세요</span>
+                      <span className="balance-hint">보유 칩: ${playerSeat?.balance.toLocaleString()}</span>
+                    </div>
+
+                    {isBettingHelperEnabled && (
+                      <div className="betting-recommendation-banner glass animate-fade-in">
+                        <div className="rec-header">
+                          <div className="rec-title-group">
+                            <Coins size={14} style={{ color: adviceStatusColor }} />
+                            <span className="rec-label">추천 베팅:</span>
+                            <span className="rec-status" style={{ color: adviceStatusColor }}>{adviceStatus}</span>
+                          </div>
+                          <div className="rec-action-group">
+                            <span className="rec-tc">
+                               (TC: {trueCount >= 0 ? "+" : ""}{trueCount.toFixed(1)})
+                            </span>
+                            <button
+                              onClick={() => {
+                                if (playerSeat) {
+                                  setCurrentBet(adviceBet);
+                                  setBetError("");
+                                }
+                              }}
+                              className="btn-apply-bet"
+                              disabled={isSubmitting}
+                            >
+                              적용 (${adviceBet})
+                            </button>
+                          </div>
+                        </div>
+                        <div className="rec-message">
+                          {adviceMessage}
+                        </div>
                       </div>
-                    </div>
-                    <div className="rec-message">
-                      {adviceMessage}
-                    </div>
+                    )}
                   </div>
-                )}
-                
-                {/* Bet Target tab selector */}
-                <div className="bet-target-selector" style={{ display: "flex", gap: "8px", margin: "8px 0" }}>
-                  <button
-                    onClick={() => setBetTarget("main")}
-                    style={{
-                      flex: 1,
-                      padding: "8px",
-                      fontSize: "12px",
-                      borderRadius: "6px",
-                      border: "1px solid",
-                      background: betTarget === "main" ? "rgba(59, 130, 246, 0.2)" : "rgba(255,255,255,0.03)",
-                      borderColor: betTarget === "main" ? "#3b82f6" : "rgba(255,255,255,0.1)",
-                      color: betTarget === "main" ? "#60a5fa" : "white",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    메인 베팅 (${currentBet})
-                  </button>
-                  <button
-                    onClick={() => setBetTarget("pp")}
-                    style={{
-                      flex: 1,
-                      padding: "8px",
-                      fontSize: "12px",
-                      borderRadius: "6px",
-                      border: "1px solid",
-                      background: betTarget === "pp" ? "rgba(16, 185, 129, 0.2)" : "rgba(255,255,255,0.03)",
-                      borderColor: betTarget === "pp" ? "#10b981" : "rgba(255,255,255,0.1)",
-                      color: betTarget === "pp" ? "#34d399" : "white",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    퍼펙트 페어 (${sideBetPP})
-                  </button>
-                  <button
-                    onClick={() => setBetTarget("213")}
-                    style={{
-                      flex: 1,
-                      padding: "8px",
-                      fontSize: "12px",
-                      borderRadius: "6px",
-                      border: "1px solid",
-                      background: betTarget === "213" ? "rgba(245, 158, 11, 0.2)" : "rgba(255,255,255,0.03)",
-                      borderColor: betTarget === "213" ? "#f59e0b" : "rgba(255,255,255,0.1)",
-                      color: betTarget === "213" ? "#fbbf24" : "white",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    21+3 포커 (${sideBet213})
-                  </button>
-                </div>
-                
-                {/* Tactile Chip selectors (scaled dynamically) */}
-                <div className="chip-rack" style={{ flexWrap: "wrap", gap: "8px" }}>
-                  {activeChipsList.map((val, idx) => {
-                    const chipColors = ["gray", "green", "blue", "purple", "black"];
-                    return (
+
+                  {/* Right Column (Betting Targets, Chips, Actions) */}
+                  <div className="betting-hud-right-col">
+                    {/* Bet Target tab selector */}
+                    <div className="bet-target-selector" style={{ display: "flex", gap: "8px", margin: "0 0 8px 0" }}>
                       <button
-                        key={val}
-                        className={`chip-btn color-${chipColors[idx]}`}
-                        onClick={() => handleAddChip(val)}
-                        disabled={isSubmitting || (playerSeat ? val > playerSeat.balance : false)}
+                        onClick={() => setBetTarget("main")}
                         style={{
-                          width: "50px",
-                          height: "50px",
+                          flex: 1,
+                          padding: "8px",
                           fontSize: "12px",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          background: betTarget === "main" ? "rgba(59, 130, 246, 0.2)" : "rgba(255,255,255,0.03)",
+                          borderColor: betTarget === "main" ? "#3b82f6" : "rgba(255,255,255,0.1)",
+                          color: betTarget === "main" ? "#60a5fa" : "white",
+                          cursor: "pointer",
+                          fontWeight: "bold",
                         }}
                       >
-                        ${val >= 1000 ? (val/1000).toFixed(0) + 'K' : val}
+                        메인 (${currentBet})
                       </button>
-                    );
-                  })}
-                </div>
-
-                {/* Bet values & Confirmations */}
-                <div className="bet-actions" style={{ marginTop: "4px" }}>
-                  <div className="bet-display" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                    <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                      총 베팅금: <strong style={{ color: "var(--gold)" }}>${currentBet + sideBetPP + sideBet213}</strong>
-                    </div>
-                    <div style={{ fontSize: "12px", color: "white" }}>
-                      메인: <strong style={{ color: "#60a5fa" }}>${currentBet}</strong> / 
-                      PP: <strong style={{ color: "#34d399" }}>${sideBetPP}</strong> / 
-                      21+3: <strong style={{ color: "#fbbf24" }}>${sideBet213}</strong>
-                    </div>
-                  </div>
-
-                  <div className="buttons betting-button-group">
-                    <div className="secondary-bet-buttons">
                       <button
-                        className="btn-danger-outline"
-                        onClick={handleClearBet}
-                        disabled={(currentBet === 0 && sideBetPP === 0 && sideBet213 === 0) || isSubmitting}
-                        style={{ padding: "8px 12px", fontSize: "13px" }}
+                        onClick={() => setBetTarget("pp")}
+                        style={{
+                          flex: 1,
+                          padding: "8px",
+                          fontSize: "12px",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          background: betTarget === "pp" ? "rgba(16, 185, 129, 0.2)" : "rgba(255,255,255,0.03)",
+                          borderColor: betTarget === "pp" ? "#10b981" : "rgba(255,255,255,0.1)",
+                          color: betTarget === "pp" ? "#34d399" : "white",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                        }}
                       >
-                        초기화
+                        페어 (${sideBetPP})
                       </button>
-                      {lastBetExists && (
+                      <button
+                        onClick={() => setBetTarget("213")}
+                        style={{
+                          flex: 1,
+                          padding: "8px",
+                          fontSize: "12px",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          background: betTarget === "213" ? "rgba(245, 158, 11, 0.2)" : "rgba(255,255,255,0.03)",
+                          borderColor: betTarget === "213" ? "#f59e0b" : "rgba(255,255,255,0.1)",
+                          color: betTarget === "213" ? "#fbbf24" : "white",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        21+3 (${sideBet213})
+                      </button>
+                    </div>
+                    
+                    {/* Tactile Chip selectors */}
+                    <div className="chip-rack" style={{ flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                      {activeChipsList.map((val, idx) => {
+                        const chipColors = ["gray", "green", "blue", "purple", "black"];
+                        return (
+                          <button
+                            key={val}
+                            className={`chip-btn color-${chipColors[idx]}`}
+                            onClick={() => handleAddChip(val)}
+                            disabled={isSubmitting || (playerSeat ? val > playerSeat.balance : false)}
+                            style={{
+                              width: "48px",
+                              height: "48px",
+                              fontSize: "11px",
+                            }}
+                          >
+                            ${val >= 1000 ? (val/1000).toFixed(0) + 'K' : val}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Bet values & Confirmations */}
+                    <div className="bet-actions" style={{ marginTop: "4px" }}>
+                      <div className="bet-display" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                        <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                          총 베팅금: <strong style={{ color: "var(--gold)" }}>${currentBet + sideBetPP + sideBet213}</strong>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "white" }}>
+                          메인: <strong style={{ color: "#60a5fa" }}>${currentBet}</strong> / 
+                          PP: <strong style={{ color: "#34d399" }}>${sideBetPP}</strong> / 
+                          21+3: <strong style={{ color: "#fbbf24" }}>${sideBet213}</strong>
+                        </div>
+                      </div>
+
+                      <div className="buttons betting-button-group">
+                        <div className="secondary-bet-buttons">
+                          <button
+                            className="btn-danger-outline"
+                            onClick={handleClearBet}
+                            disabled={(currentBet === 0 && sideBetPP === 0 && sideBet213 === 0) || isSubmitting}
+                            style={{ padding: "6px 10px", fontSize: "12px" }}
+                          >
+                            초기화
+                          </button>
+                          {lastBetExists && (
+                            <button
+                              className="btn-secondary"
+                              onClick={handleRebet}
+                              disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
+                              style={{ padding: "6px 10px", fontSize: "12px", color: "#60a5fa", borderColor: "rgba(96, 165, 250, 0.4)", background: "transparent" }}
+                            >
+                              이전 배팅
+                            </button>
+                          )}
+                          <button
+                            className="btn-secondary"
+                            onClick={handleAllIn}
+                            disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
+                            style={{ padding: "6px 10px", fontSize: "12px", color: "var(--gold)", borderColor: "var(--gold)", background: "transparent" }}
+                          >
+                            올인
+                          </button>
+                        </div>
                         <button
-                          className="btn-secondary"
-                          onClick={handleRebet}
-                          disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
-                          style={{ padding: "8px 12px", fontSize: "13px", color: "#60a5fa", borderColor: "rgba(96, 165, 250, 0.4)", background: "transparent" }}
+                          className="btn-primary confirm-bet-btn"
+                          onClick={handleConfirmBet}
+                          disabled={currentBet === 0 || isSubmitting}
+                          style={{ padding: "8px 16px", fontSize: "13px" }}
                         >
-                          이전 배팅
+                          베팅 확정
                         </button>
-                      )}
-                      <button
-                        className="btn-secondary"
-                        onClick={handleAllIn}
-                        disabled={isSubmitting || (playerSeat ? playerSeat.balance <= 0 : true)}
-                        style={{ padding: "8px 12px", fontSize: "13px", color: "var(--gold)", borderColor: "var(--gold)", background: "transparent" }}
-                      >
-                        올인
-                      </button>
+                      </div>
                     </div>
-                    <button
-                      className="btn-primary confirm-bet-btn"
-                      onClick={handleConfirmBet}
-                      disabled={currentBet === 0 || isSubmitting}
-                      style={{ padding: "8px 16px", fontSize: "13px" }}
-                    >
-                      베팅 확정
-                    </button>
                   </div>
+
                 </div>
-                {betError && <div className="bet-error-msg">{betError}</div>}
+                {betError && <div className="bet-error-msg" style={{ marginTop: "4px" }}>{betError}</div>}
               </div>
             )
           ) : table.status === "playing" ? (
