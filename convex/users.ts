@@ -130,7 +130,7 @@ export const refillBalance = mutation({
     for (const table of activeTables) {
       let seatModified = false;
       const updatedSeats = [...table.seats];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < updatedSeats.length; i++) {
         if (updatedSeats[i].userId === userId) {
           updatedSeats[i].balance = newBalance;
           seatModified = true;
@@ -221,7 +221,7 @@ export const updateUserBalanceAdmin = mutation({
     for (const table of activeTables) {
       let seatModified = false;
       const updatedSeats = [...table.seats];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < updatedSeats.length; i++) {
         if (updatedSeats[i].userId === targetUserId) {
           updatedSeats[i].balance = newBalance;
           seatModified = true;

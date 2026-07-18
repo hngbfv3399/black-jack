@@ -367,8 +367,8 @@ export const leaveTable = mutation({
 
     let updatedSeats = [...table.seats];
     const userSeatsIndices: number[] = [];
-    for (let i = 0; i < 12; i++) {
-      if (updatedSeats[i].userId === userId) {
+    for (let i = 0; i < updatedSeats.length; i++) {
+      if (updatedSeats[i] && updatedSeats[i].userId === userId) {
         userSeatsIndices.push(i);
       }
     }
@@ -508,8 +508,8 @@ export const placeBet = mutation({
     };
 
     // Synchronize balance across all seats of this user
-    for (let i = 0; i < 12; i++) {
-      if (updatedSeats[i].userId === userId) {
+    for (let i = 0; i < updatedSeats.length; i++) {
+      if (updatedSeats[i] && updatedSeats[i].userId === userId) {
         updatedSeats[i].balance = newSeatBalance;
       }
     }
@@ -642,6 +642,11 @@ export const playAction = mutation({
           lastUpdated: Date.now(),
           runningCount,
         });
+        await ctx.scheduler.runAfter(15000, internal.blackjack.turnTimeout, {
+          tableId,
+          seatIndex,
+          roundNumber: table.roundNumber,
+        });
       }
 
     } else if (action === "stand") {
@@ -722,8 +727,8 @@ export const playAction = mutation({
       updatedSeats[seatIndex] = updatedSeat;
 
       // Sync balance across all seats of this user
-      for (let i = 0; i < 12; i++) {
-        if (updatedSeats[i].userId === userId) {
+      for (let i = 0; i < updatedSeats.length; i++) {
+        if (updatedSeats[i] && updatedSeats[i].userId === userId) {
           updatedSeats[i].balance = newBalance;
         }
       }
@@ -778,8 +783,8 @@ export const playAction = mutation({
       };
       updatedSeats[seatIndex] = updatedSeat;
 
-      for (let i = 0; i < 12; i++) {
-        if (updatedSeats[i].userId === userId) {
+      for (let i = 0; i < updatedSeats.length; i++) {
+        if (updatedSeats[i] && updatedSeats[i].userId === userId) {
           updatedSeats[i].balance = newBalance;
         }
       }
@@ -832,8 +837,8 @@ export const playAction = mutation({
       };
 
       // Sync balance across all seats of this user
-      for (let i = 0; i < 12; i++) {
-        if (updatedSeats[i].userId === userId) {
+      for (let i = 0; i < updatedSeats.length; i++) {
+        if (updatedSeats[i] && updatedSeats[i].userId === userId) {
           updatedSeats[i].balance = newBalance;
         }
       }
@@ -890,6 +895,13 @@ async function checkDealerBlackjack(ctx: any, tableId: any, seats: any[], histor
     // Reveal dealer's hole card immediately
     const revealedCards = dealerCards.map((c: any) => ({ ...c, hidden: false }));
     
+    // Calculate running count reflecting revealed hole card
+    let newRunningCount = table.runningCount ?? 0;
+    const hiddenCard = dealerCards.find((c: any) => c.hidden);
+    if (hiddenCard) {
+      newRunningCount += getCardCountValue(hiddenCard);
+    }
+    
     await ctx.db.patch(tableId, {
       seats,
       dealer: {
@@ -900,6 +912,7 @@ async function checkDealerBlackjack(ctx: any, tableId: any, seats: any[], histor
       timer: undefined,
       history: history.slice(-15),
       lastUpdated: Date.now(),
+      runningCount: newRunningCount,
     });
 
     await ctx.scheduler.runAfter(3000, internal.blackjack.settleRound, {
@@ -919,8 +932,8 @@ async function checkDealerBlackjack(ctx: any, tableId: any, seats: any[], histor
 
     // Start play phase
     const activeSeats = [];
-    for (let i = 0; i < 12; i++) {
-      if (updatedSeats[i].userId !== null && updatedSeats[i].bet > 0 && updatedSeats[i].status === "playing") {
+    for (let i = 0; i < updatedSeats.length; i++) {
+      if (updatedSeats[i] && updatedSeats[i].userId !== null && updatedSeats[i].bet > 0 && updatedSeats[i].status === "playing") {
         activeSeats.push({ index: i, joinTime: updatedSeats[i].joinTime ?? 0 });
       }
     }
@@ -1011,8 +1024,8 @@ export const setInsuranceChoice = mutation({
     }
 
     // Sync balance across all seats of this user
-    for (let i = 0; i < 12; i++) {
-      if (updatedSeats[i].userId === userId) {
+    for (let i = 0; i < updatedSeats.length; i++) {
+      if (updatedSeats[i] && updatedSeats[i].userId === userId) {
         updatedSeats[i].balance = updatedSeats[seatIndex].balance;
       }
     }
@@ -1042,9 +1055,9 @@ export const endInsuranceTimeout = internalMutation({
     const newHistory = [...table.history];
 
     let autoDeclined = false;
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < updatedSeats.length; i++) {
       const seat = updatedSeats[i];
-      if (seat.userId !== null && seat.bet > 0 && (!seat.insuranceStatus || seat.insuranceStatus === "none")) {
+      if (seat && seat.userId !== null && seat.bet > 0 && (!seat.insuranceStatus || seat.insuranceStatus === "none")) {
         updatedSeats[i] = {
           ...seat,
           insuranceStatus: "declined",
@@ -1075,9 +1088,9 @@ export const dealCards = internalMutation({
 
     // Identify who betted
     const bettingSeatsIndices: number[] = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < updatedSeats.length; i++) {
       const s = updatedSeats[i];
-      if (s.userId !== null && s.bet > 0) {
+      if (s && s.userId !== null && s.bet > 0) {
         bettingSeatsIndices.push(i);
         updatedSeats[i] = {
           ...s,
@@ -1088,7 +1101,7 @@ export const dealCards = internalMutation({
           sideBetPerfectPairsStatus: s.sideBetPerfectPairs && s.sideBetPerfectPairs > 0 ? "none" : undefined,
           sideBet213Status: s.sideBet213 && s.sideBet213 > 0 ? "none" : undefined,
         };
-      } else if (s.userId !== null) {
+      } else if (s && s.userId !== null) {
         // Seated player who did not bet: stand them up/kick them
         newHistory.push(`${s.nickname}님이 배팅하지 않아 자리에서 일어났습니다.`);
         
@@ -1107,7 +1120,7 @@ export const dealCards = internalMutation({
           status: "idle",
           lastAction: "퇴장",
         };
-      } else {
+      } else if (s) {
         // Empty seat
         updatedSeats[i] = {
           ...s,
@@ -1165,15 +1178,15 @@ export const dealCards = internalMutation({
       return c;
     };
 
-    // Deal Card 1 (Forced to 8 of Spades for testing split)
+    // Deal Card 1
     for (const idx of bettingSeatsIndices) {
-      updatedSeats[idx].cards.push({ value: "8", suit: "S" });
+      updatedSeats[idx].cards.push(draw(true));
     }
     const dealerFirstCard = draw(true);
     
-    // Deal Card 2 (Forced to 8 of Hearts for testing split)
+    // Deal Card 2
     for (const idx of bettingSeatsIndices) {
-      updatedSeats[idx].cards.push({ value: "8", suit: "H" });
+      updatedSeats[idx].cards.push(draw(true));
     }
     const dealerSecondCard = { ...draw(false), hidden: true };
 
@@ -1182,11 +1195,22 @@ export const dealCards = internalMutation({
       status: "playing",
     };
 
+    // Gather latest user wallet balances to aggregate side bet outcomes without overriding each other
+    const userWalletBalances: Record<string, number> = {};
+    for (const idx of bettingSeatsIndices) {
+      const seat = updatedSeats[idx];
+      if (seat.userId && userWalletBalances[seat.userId] === undefined) {
+        const userDoc = (await ctx.db.get(seat.userId as any)) as any;
+        userWalletBalances[seat.userId] = userDoc?.balance ?? seat.balance;
+      }
+    }
+
     // Settle side bets!
     for (const idx of bettingSeatsIndices) {
       const seat = updatedSeats[idx];
       const playerFirstTwo = seat.cards;
       const dealerUp = dealerFirstCard;
+      const userId = seat.userId!;
 
        // 1. Perfect Pairs Settle
       if (seat.sideBetPerfectPairs && seat.sideBetPerfectPairs > 0) {
@@ -1203,17 +1227,14 @@ export const dealCards = internalMutation({
         }
 
         const winAmount = payout;
-        const newSeatBalance = seat.balance + winAmount;
+        userWalletBalances[userId] += winAmount;
         
         updatedSeats[idx] = {
           ...updatedSeats[idx],
-          balance: newSeatBalance,
+          balance: userWalletBalances[userId],
           sideBetPerfectPairsStatus: sideStatus,
           sideBetPerfectPairsWinAmount: winAmount,
         };
-
-        // Sync global user wallet
-        await ctx.db.patch(seat.userId as any, { balance: newSeatBalance });
 
         if (winAmount > 0) {
           newHistory.push(`${seat.nickname}님이 페어 사이드 배팅 성공: ${outcomeText} (+$${winAmount})!`);
@@ -1281,17 +1302,14 @@ export const dealCards = internalMutation({
         }
 
         const winAmount = payout;
-        const newSeatBalance = currentSeat.balance + winAmount;
+        userWalletBalances[userId] += winAmount;
 
         updatedSeats[idx] = {
           ...updatedSeats[idx],
-          balance: newSeatBalance,
+          balance: userWalletBalances[userId],
           sideBet213Status: sideStatus,
           sideBet213WinAmount: winAmount,
         };
-
-        // Sync global user wallet
-        await ctx.db.patch(currentSeat.userId as any, { balance: newSeatBalance });
 
         if (winAmount > 0) {
           newHistory.push(`${currentSeat.nickname}님이 21+3 성공: ${outcomeText} (+$${winAmount})!`);
@@ -1301,11 +1319,16 @@ export const dealCards = internalMutation({
       }
 
       // Sync balance across all seats of this user
-      for (let i = 0; i < 12; i++) {
-        if (updatedSeats[i].userId === seat.userId) {
-          updatedSeats[i].balance = updatedSeats[idx].balance;
+      for (let i = 0; i < updatedSeats.length; i++) {
+        if (updatedSeats[i] && updatedSeats[i].userId === seat.userId) {
+          updatedSeats[i].balance = userWalletBalances[userId];
         }
       }
+    }
+
+    // Apply batch updates to the user database documents
+    for (const userId of Object.keys(userWalletBalances)) {
+      await ctx.db.patch(userId as any, { balance: userWalletBalances[userId] });
     }
 
     // Check for natural blackjacks
