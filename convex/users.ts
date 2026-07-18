@@ -10,8 +10,12 @@ export const viewer = query({
     if (userId === null) {
       return null;
     }
-    const user = await ctx.db.get(userId);
-    return user;
+    try {
+      return await ctx.db.get(userId);
+    } catch (e) {
+      // If the ID is invalid (e.g. database was wiped/reset, causing invalid ID version decode error)
+      return null;
+    }
   },
 });
 
@@ -149,12 +153,17 @@ export const getMyRole = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) return { role: "guest", signupApproved: false, isAnonymous: true };
-    const user = await ctx.db.get(userId);
-    return {
-      role: user?.role ?? "user",
-      signupApproved: user?.signupApproved ?? false,
-      isAnonymous: user?.isAnonymous ?? false,
-    };
+    try {
+      const user = await ctx.db.get(userId);
+      return {
+        role: user?.role ?? "user",
+        signupApproved: user?.signupApproved ?? false,
+        isAnonymous: user?.isAnonymous ?? false,
+      };
+    } catch (e) {
+      // If the ID is invalid (e.g. database was wiped/reset, causing invalid ID version decode error)
+      return { role: "guest", signupApproved: false, isAnonymous: true };
+    }
   }
 });
 
