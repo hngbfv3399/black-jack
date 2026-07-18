@@ -83,7 +83,8 @@ export const getLeaderboard = query({
   },
 });
 
-// Refill user balance by $10000 if it falls below $1000, max 10 times per KST calendar day
+// Refill user balance by $10000 if it falls below $1000.
+// There is no daily refill-count limit.
 export const refillBalance = mutation({
   args: {},
   handler: async (ctx) => {
@@ -106,23 +107,10 @@ export const refillBalance = mutation({
       throw new Error("잔액이 $1,000 미만일 때만 무료 충전이 가능합니다.");
     }
 
-    // Daily limit check in KST
-    const dateStr = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0];
-    let count = user.dailyRefillCount ?? 0;
-    if (user.lastRefillDate !== dateStr) {
-      count = 0;
-    }
-
-    if (count >= 10) {
-      throw new Error("하루 충전 한도(10회)를 초과했습니다. 내일 다시 충전해 주세요.");
-    }
-
     const newBalance = currentBalance + 10000;
 
     await ctx.db.patch(userId, {
       balance: newBalance,
-      lastRefillDate: dateStr,
-      dailyRefillCount: count + 1,
     });
 
     // Synchronize the refilled balance to any active table seats this user occupies
@@ -236,4 +224,3 @@ export const updateUserBalanceAdmin = mutation({
     }
   }
 });
-
