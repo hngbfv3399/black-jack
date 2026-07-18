@@ -111,7 +111,7 @@ export const seedDefaultTable = mutation({
       .first();
     if (existing) return existing._id;
 
-    const seats = Array.from({ length: 12 }, () => ({
+    const seats = Array.from({ length: 6 }, () => ({
       userId: null,
       nickname: null,
       balance: 0,
@@ -145,12 +145,17 @@ export const createTable = mutation({
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("로그인이 필요합니다.");
 
+    const user = await ctx.db.get(userId);
+    if (!user || (!user.isAnonymous && user.signupApproved === false)) {
+      throw new Error("가입 승인 대기 중입니다. 관리자 승인 후 이용 가능합니다.");
+    }
+
     const trimmed = name.trim();
     if (trimmed.length < 2 || trimmed.length > 25) {
       throw new Error("테이블 이름은 2자에서 25자 사이여야 합니다.");
     }
 
-    const seats = Array.from({ length: 12 }, () => ({
+    const seats = Array.from({ length: 6 }, () => ({
       userId: null,
       nickname: null,
       balance: 0,
@@ -173,6 +178,8 @@ export const createTable = mutation({
       hostId: userId,
       runningCount: 0,
     });
+
+    await ctx.scheduler.runAfter(60000, internal.blackjack.deleteTableIfEmpty, { tableId });
 
     return tableId;
   },
@@ -197,11 +204,14 @@ export const joinSeat = mutation({
 
     const user = await ctx.db.get(userId);
     if (!user || !user.isOnboarded) throw new Error("프로필 설정을 완료해주세요.");
+    if (!user.isAnonymous && user.signupApproved === false) {
+      throw new Error("가입 승인 대기 중입니다. 관리자 승인 후 이용 가능합니다.");
+    }
 
     const table = await ctx.db.get(tableId);
     if (!table) throw new Error("테이블을 찾을 수 없습니다.");
 
-    if (seatIndex < 0 || seatIndex >= 12) throw new Error("유효하지 않은 자리 선택입니다.");
+    if (seatIndex < 0 || seatIndex >= 6) throw new Error("유효하지 않은 자리 선택입니다.");
     if (table.seats[seatIndex].userId !== null) throw new Error("이미 다른 플레이어가 앉아있는 자리입니다.");
 
     // Check if player is already seated at 3 or more seats
@@ -215,7 +225,7 @@ export const joinSeat = mutation({
     updatedSeats[seatIndex] = {
       userId,
       nickname: user.nickname ?? "Anonymous Player",
-      balance: user.balance ?? 3000,
+      balance: user.balance ?? 10000,
       bet: 0,
       cards: [],
       status: "idle",
@@ -228,10 +238,13 @@ export const joinSeat = mutation({
     let newStatus = table.status;
     let newTimer = table.timer;
 
-    // If table was waiting (empty) and we now have a player, transition to betting phase (no timer)
+    // If table was waiting (empty) and we now have a player, transition to betting phase with 15s timer
     if (table.status === "waiting") {
       newStatus = "betting";
-      newTimer = undefined;
+      newTimer = Date.now() + 15000;
+    } else if (table.status === "betting") {
+      // Reset betting timer when a new player sits down
+      newTimer = Date.now() + 15000;
     }
 
     await ctx.db.patch(tableId, {
@@ -241,6 +254,13 @@ export const joinSeat = mutation({
       history: newHistory,
       lastUpdated: Date.now(),
     });
+
+    if (table.status === "waiting" || table.status === "betting") {
+      await ctx.scheduler.runAfter(15000, internal.blackjack.endBettingTimeout, {
+        tableId,
+        roundNumber: table.roundNumber,
+      });
+    }
   },
 });
 
@@ -281,7 +301,17 @@ export const leaveSeat = mutation({
     const activePlayers = updatedSeats.filter(s => s.userId !== null);
     
     if (activePlayers.length === 0) {
-      await ctx.db.delete(tableId);
+      // Set table to waiting state, but do not delete immediately.
+      // Schedule empty table deletion in 60 seconds.
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        status: "waiting",
+        activeSeatIndex: -1,
+        timer: undefined,
+        history: newHistory,
+        lastUpdated: Date.now(),
+      });
+      await ctx.scheduler.runAfter(60000, internal.blackjack.deleteTableIfEmpty, { tableId });
       return;
     }
 
@@ -289,11 +319,11 @@ export const leaveSeat = mutation({
     let newActiveSeat = table.activeSeatIndex;
     let newTimer = table.timer;
 
-    if (activePlayers.length === 0) {
-      newStatus = "waiting";
-      newActiveSeat = -1;
-      newTimer = undefined;
-    } else if (table.status === "playing" && table.activeSeatIndex === seatIndex) {
+    if (table.status === "betting") {
+      newTimer = Date.now() + 15000;
+    }
+
+    if (table.status === "playing" && table.activeSeatIndex === seatIndex) {
       // If the player left during their turn, advance turn
       // We will perform this in a deferred function call to maintain transactional safety
     }
@@ -310,6 +340,13 @@ export const leaveSeat = mutation({
     // If player left during their active turn, we advance the turn asynchronously
     if (table.status === "playing" && table.activeSeatIndex === seatIndex) {
       await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+        tableId,
+        roundNumber: table.roundNumber,
+      });
+    }
+
+    if (table.status === "betting") {
+      await ctx.scheduler.runAfter(15000, internal.blackjack.endBettingTimeout, {
         tableId,
         roundNumber: table.roundNumber,
       });
@@ -367,32 +404,41 @@ export const leaveTable = mutation({
       }
     }
 
-    // If host, delete the entire table room!
-    if (table.hostId === userId) {
-      await ctx.db.delete(tableId);
-      return { deleted: true };
+    const activePlayers = updatedSeats.filter(s => s.userId !== null);
+
+    if (activePlayers.length === 0) {
+      const nickname = wasSeated ? (table.seats[userSeatsIndices[0]]?.nickname ?? "Player") : "Player";
+      const newHistory = [...(table.history ?? []), `${nickname}님이 테이블을 퇴장했습니다.`].slice(-15);
+      
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        status: "waiting",
+        activeSeatIndex: -1,
+        timer: undefined,
+        history: newHistory,
+        lastUpdated: Date.now(),
+      });
+
+      await ctx.scheduler.runAfter(60000, internal.blackjack.deleteTableIfEmpty, { tableId });
+      return { deleted: false };
     }
 
-    // Otherwise, patch the table with updated seats if we modified them
-    if (wasSeated) {
-      const activePlayers = updatedSeats.filter(s => s.userId !== null);
-      
-      if (activePlayers.length === 0) {
-        await ctx.db.delete(tableId);
-        return { deleted: true };
-      }
+    // If the host leaves but other players are still present, transfer the host role
+    let newHostId = table.hostId;
+    if (table.hostId === userId) {
+      newHostId = activePlayers[0].userId || undefined;
+    }
 
+    if (wasSeated || newHostId !== table.hostId) {
       let newStatus = table.status;
       let newActiveSeat = table.activeSeatIndex;
       let newTimer = table.timer;
 
-      if (activePlayers.length === 0) {
-        newStatus = "waiting";
-        newActiveSeat = -1;
-        newTimer = undefined;
+      if (wasSeated && table.status === "betting") {
+        newTimer = Date.now() + 15000;
       }
 
-      const nickname = table.seats[userSeatsIndices[0]]?.nickname ?? "Player";
+      const nickname = wasSeated ? (table.seats[userSeatsIndices[0]]?.nickname ?? "Player") : "Player";
       const newHistory = [...(table.history ?? []), `${nickname}님이 테이블을 퇴장했습니다.`].slice(-15);
 
       await ctx.db.patch(tableId, {
@@ -402,7 +448,15 @@ export const leaveTable = mutation({
         timer: newTimer,
         history: newHistory,
         lastUpdated: Date.now(),
+        hostId: newHostId,
       });
+
+      if (wasSeated && table.status === "betting") {
+        await ctx.scheduler.runAfter(15000, internal.blackjack.endBettingTimeout, {
+          tableId,
+          roundNumber: table.roundNumber,
+        });
+      }
     }
 
     return { deleted: false };
@@ -434,7 +488,7 @@ export const placeBet = mutation({
     if (seat.userId !== userId) throw new Error("이 자리에 앉아 있지 않습니다.");
     if (amount <= 0) throw new Error("베팅 금액은 0보다 커야 합니다.");
 
-    const latestBalance = user.balance ?? 3000;
+    const latestBalance = user.balance ?? 10000;
     const totalWager = amount + sideBetPerfectPairs + sideBet213;
     if (totalWager > latestBalance) throw new Error("잔액이 부족합니다.");
 
@@ -705,6 +759,46 @@ export const playAction = mutation({
           roundNumber: table.roundNumber,
         });
       }
+    } else if (action === "surrender") {
+      if (isSplit || seat.cards.length !== 2) {
+        throw new Error("서렌더는 처음 받은 2장의 메인 카드로만 가능합니다.");
+      }
+      if (seat.lastAction === "히트" || seat.lastAction === "더블" || seat.lastAction === "스탠드") {
+        throw new Error("이미 액션을 진행하여 서렌더할 수 없습니다.");
+      }
+
+      const refund = Math.floor(seat.bet / 2);
+      const newBalance = seat.balance + refund;
+
+      const updatedSeat = {
+        ...seat,
+        balance: newBalance,
+        status: "surrendered",
+        lastAction: "서렌더",
+      };
+      updatedSeats[seatIndex] = updatedSeat;
+
+      for (let i = 0; i < 12; i++) {
+        if (updatedSeats[i].userId === userId) {
+          updatedSeats[i].balance = newBalance;
+        }
+      }
+
+      await ctx.db.patch(userId, { balance: newBalance });
+
+      newHistory.push(`${seat.nickname}님이 서렌더(포기)하여 배팅금의 절반($${refund})을 반환받았습니다.`);
+
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        history: newHistory.slice(-15),
+        lastUpdated: Date.now(),
+        runningCount,
+      });
+
+      await ctx.scheduler.runAfter(0, internal.blackjack.advanceTurnAsync, {
+        tableId,
+        roundNumber: table.roundNumber,
+      });
     } else if (action === "split") {
       if (seat.cards.length !== 2) throw new Error("스플릿은 처음 받은 2장의 카드로만 가능합니다.");
       if (seat.cards[0].value !== seat.cards[1].value) throw new Error("스플릿하려면 카드의 숫자가 같아야 합니다.");
@@ -771,6 +865,11 @@ export const endBettingTimeout = internalMutation({
   handler: async (ctx, { tableId, roundNumber }) => {
     const table = await ctx.db.get(tableId);
     if (!table || table.status !== "betting" || table.roundNumber !== roundNumber) return;
+
+    // Check if a newer timer was scheduled (if current time is significantly before table.timer - 500ms)
+    if (table.timer && Date.now() < table.timer - 500) {
+      return; // Ignore this old timer
+    }
 
     // Proceed to deal cards
     await ctx.scheduler.runAfter(0, internal.blackjack.dealCards, { tableId, roundNumber });
@@ -886,7 +985,7 @@ export const setInsuranceChoice = mutation({
 
     if (buy) {
       const insuranceCost = Math.floor(seat.bet / 2);
-      const latestBalance = user.balance ?? 3000;
+      const latestBalance = user.balance ?? 10000;
       if (latestBalance < insuranceCost) {
         throw new Error("인셔런스를 구매할 칩이 부족합니다.");
       }
@@ -989,8 +1088,27 @@ export const dealCards = internalMutation({
           sideBetPerfectPairsStatus: s.sideBetPerfectPairs && s.sideBetPerfectPairs > 0 ? "none" : undefined,
           sideBet213Status: s.sideBet213 && s.sideBet213 > 0 ? "none" : undefined,
         };
+      } else if (s.userId !== null) {
+        // Seated player who did not bet: stand them up/kick them
+        newHistory.push(`${s.nickname}님이 배팅하지 않아 자리에서 일어났습니다.`);
+        
+        // Return any remaining balance to the user's permanent record (just in case)
+        const user = (await ctx.db.get(s.userId as any)) as any;
+        if (user && s.balance !== user.balance) {
+          await ctx.db.patch(s.userId as any, { balance: s.balance });
+        }
+
+        updatedSeats[i] = {
+          userId: null,
+          nickname: null,
+          balance: 0,
+          bet: 0,
+          cards: [],
+          status: "idle",
+          lastAction: "퇴장",
+        };
       } else {
-        // Set spectator/idle status
+        // Empty seat
         updatedSeats[i] = {
           ...s,
           cards: [],
@@ -1000,10 +1118,25 @@ export const dealCards = internalMutation({
       }
     }
 
-    // If nobody placed a bet, restart betting countdown
+    // If nobody placed a bet, restart betting countdown or wait if empty
     if (bettingSeatsIndices.length === 0) {
       newHistory.push("배팅금액이 없습니다. 대기 중...");
+      const activePlayers = updatedSeats.filter(s => s.userId !== null);
+
+      if (activePlayers.length === 0) {
+        await ctx.db.patch(tableId, {
+          seats: updatedSeats,
+          status: "waiting",
+          timer: undefined,
+          history: newHistory.slice(-15),
+          lastUpdated: Date.now(),
+        });
+        await ctx.scheduler.runAfter(60000, internal.blackjack.deleteTableIfEmpty, { tableId });
+        return;
+      }
+
       await ctx.db.patch(tableId, {
+        seats: updatedSeats,
         status: "betting",
         timer: Date.now() + 15000,
         history: newHistory.slice(-15),
@@ -1032,15 +1165,15 @@ export const dealCards = internalMutation({
       return c;
     };
 
-    // Deal Card 1
+    // Deal Card 1 (Forced to 8 of Spades for testing split)
     for (const idx of bettingSeatsIndices) {
-      updatedSeats[idx].cards.push(draw(true));
+      updatedSeats[idx].cards.push({ value: "8", suit: "S" });
     }
     const dealerFirstCard = draw(true);
     
-    // Deal Card 2
+    // Deal Card 2 (Forced to 8 of Hearts for testing split)
     for (const idx of bettingSeatsIndices) {
-      updatedSeats[idx].cards.push(draw(true));
+      updatedSeats[idx].cards.push({ value: "8", suit: "H" });
     }
     const dealerSecondCard = { ...draw(false), hidden: true };
 
@@ -1055,7 +1188,7 @@ export const dealCards = internalMutation({
       const playerFirstTwo = seat.cards;
       const dealerUp = dealerFirstCard;
 
-      // 1. Perfect Pairs Settle
+       // 1. Perfect Pairs Settle
       if (seat.sideBetPerfectPairs && seat.sideBetPerfectPairs > 0) {
         const c1 = playerFirstTwo[0];
         const c2 = playerFirstTwo[1];
@@ -1064,20 +1197,9 @@ export const dealCards = internalMutation({
         let outcomeText = "";
 
         if (c1.value === c2.value) {
-          const isRed = (s: string) => ["H", "D"].includes(s);
-          if (c1.suit === c2.suit) {
-            payout = seat.sideBetPerfectPairs * 25;
-            sideStatus = "perfect_pair";
-            outcomeText = "퍼펙트 페어 (25배)";
-          } else if (isRed(c1.suit) === isRed(c2.suit)) {
-            payout = seat.sideBetPerfectPairs * 12;
-            sideStatus = "colored_pair";
-            outcomeText = "컬러 페어 (12배)";
-          } else {
-            payout = seat.sideBetPerfectPairs * 6;
-            sideStatus = "mixed_pair";
-            outcomeText = "믹스드 페어 (6배)";
-          }
+          payout = seat.sideBetPerfectPairs * 11;
+          sideStatus = "pair";
+          outcomeText = "페어 (11배)";
         }
 
         const winAmount = payout;
@@ -1094,9 +1216,9 @@ export const dealCards = internalMutation({
         await ctx.db.patch(seat.userId as any, { balance: newSeatBalance });
 
         if (winAmount > 0) {
-          newHistory.push(`${seat.nickname}님이 Perfect Pairs 성공: ${outcomeText} (+$${winAmount})!`);
+          newHistory.push(`${seat.nickname}님이 페어 사이드 배팅 성공: ${outcomeText} (+$${winAmount})!`);
         } else {
-          newHistory.push(`${seat.nickname}님이 Perfect Pairs 사이드 배팅 패배.`);
+          newHistory.push(`${seat.nickname}님이 페어 사이드 배팅 패배.`);
         }
       }
 
@@ -1594,6 +1716,10 @@ function calculateHandPayout(
   let payout = 0;
   let outcome = "";
 
+  if (handStatus === "surrendered") {
+    return { payout: 0, outcome: "서렌더 (포기)" };
+  }
+
   if (handStatus === "busted") {
     payout = 0;
     outcome = "패배 (버스트)";
@@ -1646,17 +1772,25 @@ export const settleRound = internalMutation({
     const newHistory = [...table.history, "=== 라운드 결과 정산 ==="];
 
     // Gather payouts per seat to support multi-seat synchronization cleanly
-    const seatPayouts: number[] = Array(12).fill(0);
-    const seatOutcomeMsgs: string[] = Array(12).fill("");
-    const seatStatuses: string[] = Array(12).fill("lost");
-    const seatLastActions: string[] = Array(12).fill("패배");
+    const seatPayouts: number[] = Array(6).fill(0);
+    const seatOutcomeMsgs: string[] = Array(6).fill("");
+    const seatStatuses: string[] = Array(6).fill("lost");
+    const seatLastActions: string[] = Array(6).fill("패배");
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 6; i++) {
       const seat = updatedSeats[i];
       if (seat.userId === null || seat.bet === 0) continue;
 
       let totalPayout = 0;
       let outcomeMsg = "";
+
+      if (seat.status === "surrendered") {
+        seatPayouts[i] = 0;
+        seatOutcomeMsgs[i] = "메인: 서렌더 (포기)";
+        seatStatuses[i] = "surrendered";
+        seatLastActions[i] = "서렌더";
+        continue;
+      }
 
       // 1. Settle main hand
       const mainResult = calculateHandPayout(seat.cards, seat.status, seat.bet, table.dealer.cards, dealerStatus);
@@ -1696,7 +1830,7 @@ export const settleRound = internalMutation({
 
     // Sum payouts by user ID and update global user profiles
     const userPayoutSum: Record<string, number> = {};
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 6; i++) {
       const seat = updatedSeats[i];
       if (seat.userId === null || seat.bet === 0) continue;
       userPayoutSum[seat.userId] = (userPayoutSum[seat.userId] ?? 0) + seatPayouts[i];
@@ -1706,7 +1840,7 @@ export const settleRound = internalMutation({
     for (const userId of Object.keys(userPayoutSum)) {
       const userDoc = (await ctx.db.get(userId as any)) as any;
       if (userDoc) {
-        const currentBal = userDoc.balance ?? 3000;
+        const currentBal = userDoc.balance ?? 10000;
         const payout = userPayoutSum[userId];
         const newBal = currentBal + payout;
         await ctx.db.patch(userId as any, { balance: newBal });
@@ -1715,7 +1849,7 @@ export const settleRound = internalMutation({
     }
 
     // Update seat records with outcomes and synced balances
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 6; i++) {
       const seat = updatedSeats[i];
       if (seat.userId === null) continue;
 
@@ -1769,7 +1903,7 @@ export const prepareNextRound = internalMutation({
     // If a player has $0 balance, they are automatically stood up (kicked from seat).
     const newHistory = [...table.history, "다음 라운드를 시작합니다... 베팅해주세요!"];
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 6; i++) {
       const seat = updatedSeats[i];
       if (seat.userId === null) continue;
 
@@ -1810,20 +1944,53 @@ export const prepareNextRound = internalMutation({
     const activePlayers = updatedSeats.filter(s => s.userId !== null);
 
     if (activePlayers.length === 0) {
-      await ctx.db.delete(tableId);
-      return;
-    } else {
-      // Transition to next betting phase (no timer)
       await ctx.db.patch(tableId, {
         seats: updatedSeats,
         dealer: { cards: [], status: "playing" },
-        status: "betting",
+        status: "waiting",
         activeSeatIndex: -1,
         timer: undefined,
         roundNumber,
         history: newHistory.slice(-15),
         lastUpdated: Date.now(),
       });
+      await ctx.scheduler.runAfter(60000, internal.blackjack.deleteTableIfEmpty, { tableId });
+      return;
+    } else {
+      // Transition to next betting phase with 15s timer
+      await ctx.db.patch(tableId, {
+        seats: updatedSeats,
+        dealer: { cards: [], status: "playing" },
+        status: "betting",
+        activeSeatIndex: -1,
+        timer: Date.now() + 15000,
+        roundNumber,
+        history: newHistory.slice(-15),
+        lastUpdated: Date.now(),
+      });
+
+      await ctx.scheduler.runAfter(15000, internal.blackjack.endBettingTimeout, {
+        tableId,
+        roundNumber,
+      });
     }
   },
 });
+
+// Delete the table room if it remains empty for 60 seconds
+export const deleteTableIfEmpty = internalMutation({
+  args: { tableId: v.id("tables") },
+  handler: async (ctx, { tableId }) => {
+    const table = await ctx.db.get(tableId);
+    if (!table) return;
+
+    const activePlayers = table.seats.filter(s => s.userId !== null);
+    if (activePlayers.length === 0) {
+      const timeSinceLastUpdate = Date.now() - table.lastUpdated;
+      if (timeSinceLastUpdate >= 55000) {
+        await ctx.db.delete(tableId);
+      }
+    }
+  },
+});
+

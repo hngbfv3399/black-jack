@@ -50,6 +50,58 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
   });
   const [isBettingPanelExpanded, setIsBettingPanelExpanded] = useState<boolean>(true);
 
+  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Find active seat coordinates to position floating HUD
+  const getActiveSeatPercentCoords = () => {
+    if (!table || table.activeSeatIndex === -1) return { x: 50, y: 70 };
+    
+    const activeSeatIdx = table.activeSeatIndex;
+    const isPortraitMode = windowWidth <= 768 && window.innerHeight > windowWidth;
+    const WIDTH = isPortraitMode ? 800 : 1200;
+    const HEIGHT = isPortraitMode ? 1200 : 800;
+
+    if (isPortraitMode) {
+      const portraitCoords = [
+        { x: 150, y: 350 }, // Seat 0
+        { x: 170, y: 560 }, // Seat 1
+        { x: 250, y: 770 }, // Seat 2
+        { x: 550, y: 770 }, // Seat 3
+        { x: 630, y: 560 }, // Seat 4
+        { x: 650, y: 350 }, // Seat 5
+      ];
+      const coords = portraitCoords[activeSeatIdx];
+      return {
+        x: (coords.x / WIDTH) * 100,
+        y: (coords.y / HEIGHT) * 100,
+      };
+    }
+
+    // Landscape
+    const startAngle = Math.PI * 0.82;
+    const endAngle = Math.PI * 0.18;
+    const angleRange = startAngle - endAngle;
+    const angle = startAngle - (activeSeatIdx / 5) * angleRange;
+    
+    const radiusX = 400;
+    const radiusY = 220;
+    const centerX = WIDTH / 2;
+    const centerY = HEIGHT * 0.38;
+
+    const seatX = centerX + Math.cos(angle) * radiusX;
+    const seatY = centerY + Math.sin(angle) * radiusY + 80;
+
+    return {
+      x: (seatX / WIDTH) * 100,
+      y: (seatY / HEIGHT) * 100,
+    };
+  };
+
   const handleRefill = async () => {
     setIsRefilling(true);
     try {
@@ -110,7 +162,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
 
   // Calculate dynamic chip values rack
   let chipMultiplier = 1;
-  const playerBal = playerSeat ? playerSeat.balance : (user.balance ?? 3000);
+  const playerBal = playerSeat ? playerSeat.balance : (user.balance ?? 10000);
   if (playerBal >= 125000) {
     chipMultiplier = 125;
   } else if (playerBal >= 25000) {
@@ -233,8 +285,12 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
     }
     onBackToLobby();
   };
-  const baseChipsList = [10, 50, 100, 500, 1000];
-  const activeChipsList = baseChipsList.map(c => c * chipMultiplier);
+  const ALL_CHIPS = [1000, 5000, 10000, 25000, 50000, 100000, 500000, 1000000, 5000000, 10000000];
+  const playerBalForChips = playerSeat ? playerSeat.balance : (user.balance ?? 10000);
+  const activeChipsList = ALL_CHIPS.filter(val => val <= playerBalForChips).slice(-5);
+  if (activeChipsList.length === 0) {
+    activeChipsList.push(1000);
+  }
 
   // Betting Actions
   const handleAddChip = (val: number) => {
@@ -377,7 +433,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
           setIsBettingHelperEnabled={setIsBettingHelperEnabled}
           onOpenStrategyGuide={() => setIsStrategyOpen(true)}
         />
-        <div className="gameplay-area">
+        <div className="gameplay-area" style={{ position: "relative" }}>
           <GameCanvas 
             table={table} 
             currentUserId={user._id} 
@@ -391,6 +447,136 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
             isBettingHelperEnabled={isBettingHelperEnabled}
             isBettingPanelExpanded={isBettingPanelExpanded}
           />
+
+          {/* Floating Action HUD (when it is the player's active turn) */}
+          {table.status === "playing" && isMyTurn && (() => {
+            const activeHandIndex = playerSeat ? (playerSeat.activeHandIndex ?? 0) : 0;
+            const activeCards = playerSeat ? (playerSeat.splitCards && activeHandIndex === 1 ? playerSeat.splitCards : playerSeat.cards) : [];
+            const dealerUpcard = table.dealer?.cards?.[0];
+            const advice = (activeCards.length >= 2 && dealerUpcard) ? getBasicStrategyRecommendation(activeCards, dealerUpcard) : null;
+            
+            const canDouble = activeCards.length === 2 && playerSeat && playerSeat.balance >= (activeHandIndex === 1 ? playerSeat.splitBet! : playerSeat.bet);
+            const canSplit = playerSeat && !playerSeat.splitCards && playerSeat.cards.length === 2 && 
+                              playerSeat.cards[0].value === playerSeat.cards[1].value && 
+                              playerSeat.balance >= playerSeat.bet;
+            const canSurrender = activeCards.length === 2 && playerSeat && !playerSeat.splitCards;
+
+            const isHitRecommended = advice === "H" && isStrategyHelperEnabled;
+            const isStandRecommended = advice === "S" && isStrategyHelperEnabled;
+            const isDoubleRecommended = advice === "D" && isStrategyHelperEnabled;
+            const isSplitRecommended = advice === "P" && isStrategyHelperEnabled;
+
+            const pctCoords = getActiveSeatPercentCoords();
+            const isSplitActive = playerSeat && playerSeat.splitCards;
+            let shiftX = 0;
+            if (isSplitActive) {
+              shiftX = activeHandIndex === 0 ? -60 : 60; // Align exactly above Hand 1 or Hand 2
+            }
+
+            return (
+              <div 
+                className="action-hud floating-hud animate-fade-in"
+                style={{
+                  position: "absolute",
+                  left: `calc(${pctCoords.x}% + ${shiftX}px)`,
+                  top: `${pctCoords.y}%`,
+                  transform: "translate(-50%, -200px)", // Float above the card hand
+                  zIndex: 20,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "8px",
+                  background: "rgba(15, 23, 42, 0.95)",
+                  backdropFilter: "blur(12px)",
+                  border: "1.5px solid rgba(226, 184, 66, 0.5)",
+                  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(226, 184, 66, 0.15)",
+                  padding: "10px 14px",
+                  borderRadius: "12px",
+                  width: "max-content",
+                  pointerEvents: "auto",
+                }}
+              >
+                <div className="hud-status-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", width: "100%", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "6px", marginBottom: "4px" }}>
+                  <div className="turn-indicator" style={{ fontSize: "11px", fontWeight: "bold", color: "#60a5fa" }}>
+                    {playerSeatIndex + 1}번 자리 차례 {playerSeat?.splitCards && `(핸드 ${activeHandIndex + 1})`}
+                  </div>
+                  {isStrategyHelperEnabled && advice && (
+                    <div className="strategy-advisor animate-fade-in" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span className="advisor-tag" style={{ fontSize: "10px", color: "rgba(255,255,255,0.6)" }}>추천:</span>
+                      <strong className={`advice-badge color-${advice}`} style={{ fontSize: "10px", padding: "1px 4px", borderRadius: "3px" }}>
+                        {advice === "H" ? "히트" : advice === "S" ? "스탠드" : advice === "D" ? "더블" : "스플릿"}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                <div className="action-buttons" style={{ display: "flex", gap: "6px" }}>
+                  <button
+                    className={`btn-primary hit-btn ${isHitRecommended ? "recommended-action-btn" : ""}`}
+                    onClick={() => handleAction("hit")}
+                    disabled={isSubmitting}
+                    style={{ padding: "6px 12px", fontSize: "11px", minWidth: "60px" }}
+                  >
+                    {isHitRecommended ? "히트 (추천)" : "히트"}
+                  </button>
+                  <button
+                    className={`btn-secondary stand-btn ${isStandRecommended ? "recommended-action-btn" : ""}`}
+                    onClick={() => handleAction("stand")}
+                    disabled={isSubmitting}
+                    style={{ padding: "6px 12px", fontSize: "11px", minWidth: "60px" }}
+                  >
+                    {isStandRecommended ? "스탠드 (추천)" : "스탠드"}
+                  </button>
+                  {canDouble && (
+                    <button
+                      className={`btn-accent double-btn ${isDoubleRecommended ? "recommended-action-btn" : ""}`}
+                      onClick={() => handleAction("double")}
+                      disabled={isSubmitting}
+                      style={{ padding: "6px 12px", fontSize: "11px", minWidth: "80px" }}
+                    >
+                      {isDoubleRecommended ? "더블 (추천)" : "더블"}
+                    </button>
+                  )}
+                  {canSplit && (
+                    <button
+                      className={`btn-accent split-btn ${isSplitRecommended ? "recommended-action-btn" : ""}`}
+                      onClick={() => handleAction("split")}
+                      disabled={isSubmitting}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "11px",
+                        minWidth: "70px",
+                        background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                        boxShadow: "0 2px 8px rgba(245, 158, 11, 0.3)",
+                        border: "none",
+                        color: "white"
+                      }}
+                    >
+                      {isSplitRecommended ? "스플릿 (추천)" : "스플릿"}
+                    </button>
+                  )}
+                  {canSurrender && (
+                    <button
+                      className="btn-danger surrender-btn"
+                      onClick={() => handleAction("surrender")}
+                      disabled={isSubmitting}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "11px",
+                        minWidth: "70px",
+                        background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+                        boxShadow: "0 2px 8px rgba(239, 68, 68, 0.3)",
+                        border: "none",
+                        color: "white"
+                      }}
+                    >
+                      서렌더
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           
           {/* Seat empty prompt (for spectators) */}
           {!isSeated && table.status === "waiting" && (
@@ -585,12 +771,12 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                     
                     {/* Tactile Chip selectors */}
                     <div className="chip-rack" style={{ flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
-                      {activeChipsList.map((val, idx) => {
+                       {activeChipsList.map((val, idx) => {
                         const chipColors = ["gray", "green", "blue", "purple", "black"];
                         return (
                           <button
                             key={val}
-                            className={`chip-btn color-${chipColors[idx]}`}
+                            className={`chip-btn color-${chipColors[idx % chipColors.length]}`}
                             onClick={() => handleAddChip(val)}
                             disabled={isSubmitting || (playerSeat ? val > playerSeat.balance : false)}
                             style={{
@@ -599,7 +785,7 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
                               fontSize: "11px",
                             }}
                           >
-                            ${val >= 1000 ? (val/1000).toFixed(0) + 'K' : val}
+                            ${val >= 1000000 ? (val/1000000).toFixed(0) + 'M' : (val >= 1000 ? (val/1000).toFixed(0) + 'K' : val)}
                           </button>
                         );
                       })}
@@ -665,79 +851,13 @@ export default function BlackjackTable({ tableId, user, onBackToLobby }: Blackja
             )
           ) : table.status === "playing" ? (
             // Active Gameplay Action HUD
-            isMyTurn ? (() => {
-              const activeHandIndex = playerSeat ? (playerSeat.activeHandIndex ?? 0) : 0;
-              const activeCards = playerSeat ? (playerSeat.splitCards && activeHandIndex === 1 ? playerSeat.splitCards : playerSeat.cards) : [];
-              const dealerUpcard = table.dealer?.cards?.[0];
-              const advice = (activeCards.length >= 2 && dealerUpcard) ? getBasicStrategyRecommendation(activeCards, dealerUpcard) : null;
-              
-              const canDouble = activeCards.length === 2 && playerSeat && playerSeat.balance >= (activeHandIndex === 1 ? playerSeat.splitBet! : playerSeat.bet);
-              const canSplit = playerSeat && !playerSeat.splitCards && playerSeat.cards.length === 2 && 
-                                playerSeat.cards[0].value === playerSeat.cards[1].value && 
-                                playerSeat.balance >= playerSeat.bet;
-
-              const isHitRecommended = advice === "H" && isStrategyHelperEnabled;
-              const isStandRecommended = advice === "S" && isStrategyHelperEnabled;
-              const isDoubleRecommended = advice === "D" && isStrategyHelperEnabled;
-              const isSplitRecommended = advice === "P" && isStrategyHelperEnabled;
-
-              return (
-                <div className="action-hud animate-slide-up">
-                  <div className="hud-status-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: "12px" }}>
-                    <div className="turn-indicator">
-                      {playerSeatIndex + 1}번 자리 차례입니다! {playerSeat?.splitCards && `(핸드 ${activeHandIndex + 1})`}
-                    </div>
-                    {isStrategyHelperEnabled && advice && (
-                      <div className="strategy-advisor animate-fade-in" style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.05)", padding: "4px 10px", borderRadius: "6px", border: "1px solid rgba(226, 184, 66, 0.15)" }}>
-                        <span className="advisor-tag" style={{ fontSize: "11px", color: "var(--text-secondary)" }}>추천:</span>
-                        <strong className={`advice-badge color-${advice}`} style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "4px" }}>
-                          {advice === "H" ? "히트" : advice === "S" ? "스탠드" : advice === "D" ? "더블 다운" : "스플릿"}
-                        </strong>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="action-buttons">
-                    <button
-                      className={`btn-primary hit-btn ${isHitRecommended ? "recommended-action-btn" : ""}`}
-                      onClick={() => handleAction("hit")}
-                      disabled={isSubmitting}
-                    >
-                      {isHitRecommended ? "히트 (추천)" : "히트"}
-                    </button>
-                    <button
-                      className={`btn-secondary stand-btn ${isStandRecommended ? "recommended-action-btn" : ""}`}
-                      onClick={() => handleAction("stand")}
-                      disabled={isSubmitting}
-                    >
-                      {isStandRecommended ? "스탠드 (추천)" : "스탠드"}
-                    </button>
-                    {canDouble && (
-                      <button
-                        className={`btn-accent double-btn ${isDoubleRecommended ? "recommended-action-btn" : ""}`}
-                        onClick={() => handleAction("double")}
-                        disabled={isSubmitting}
-                      >
-                        {isDoubleRecommended ? "더블 다운 (추천)" : "더블 다운"}
-                      </button>
-                    )}
-                    {canSplit && (
-                      <button
-                        className={`btn-accent split-btn ${isSplitRecommended ? "recommended-action-btn" : ""}`}
-                        onClick={() => handleAction("split")}
-                        disabled={isSubmitting}
-                        style={{
-                          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                          boxShadow: "0 4px 15px rgba(245, 158, 11, 0.3)"
-                        }}
-                      >
-                        {isSplitRecommended ? "스플릿 (추천)" : "스플릿"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })() : (
+            isMyTurn ? (
+              <div className="footer-message" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+                <p style={{ color: "#3b82f6", fontWeight: "bold", margin: 0, fontSize: "13px", animation: "pulse 2s infinite" }}>
+                  당신의 차례입니다! 카드 위에 표시된 액션 버튼을 선택해 주세요.
+                </p>
+              </div>
+            ) : (
               <div className="footer-message">
                 <p>
                   {table.activeSeatIndex !== -1 && table.seats[table.activeSeatIndex]

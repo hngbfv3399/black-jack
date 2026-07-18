@@ -44,11 +44,17 @@ export const completeOnboarding = mutation({
       throw new Error("이 닉네임은 이미 다른 플레이어가 사용 중입니다.");
     }
 
-    // Update user profile with $3000 starting cash
+    // Update user profile with $10000 starting cash
+    // If this is the very first user in the database, bootstrap them as approved admin
+    const allUsers = await ctx.db.query("users").collect();
+    const isFirstUser = allUsers.length <= 1; // including the current user
+
     await ctx.db.patch(userId, {
       nickname: trimmed,
-      balance: 3000,
+      balance: 10000,
       isOnboarded: true,
+      role: isFirstUser ? "admin" : "user",
+      signupApproved: isFirstUser ? true : false,
     });
 
     return userId;
@@ -73,7 +79,7 @@ export const getLeaderboard = query({
   },
 });
 
-// Refill user balance back to $3000 if it falls below $1000
+// Refill user balance by $10000 if it falls below $1000, max 10 times per KST calendar day
 export const refillBalance = mutation({
   args: {},
   handler: async (ctx) => {
@@ -87,13 +93,32 @@ export const refillBalance = mutation({
       throw new Error("사용자를 찾을 수 없습니다.");
     }
 
+    if (!user.isAnonymous && user.signupApproved === false) {
+      throw new Error("가입 승인 대기 중입니다. 관리자 승인 후 이용 가능합니다.");
+    }
+
     const currentBalance = user.balance ?? 0;
     if (currentBalance >= 1000) {
       throw new Error("잔액이 $1,000 미만일 때만 무료 충전이 가능합니다.");
     }
 
+    // Daily limit check in KST
+    const dateStr = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0];
+    let count = user.dailyRefillCount ?? 0;
+    if (user.lastRefillDate !== dateStr) {
+      count = 0;
+    }
+
+    if (count >= 10) {
+      throw new Error("하루 충전 한도(10회)를 초과했습니다. 내일 다시 충전해 주세요.");
+    }
+
+    const newBalance = currentBalance + 10000;
+
     await ctx.db.patch(userId, {
-      balance: 3000,
+      balance: newBalance,
+      lastRefillDate: dateStr,
+      dailyRefillCount: count + 1,
     });
 
     // Synchronize the refilled balance to any active table seats this user occupies
@@ -101,9 +126,9 @@ export const refillBalance = mutation({
     for (const table of activeTables) {
       let seatModified = false;
       const updatedSeats = [...table.seats];
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 6; i++) {
         if (updatedSeats[i].userId === userId) {
-          updatedSeats[i].balance = 3000;
+          updatedSeats[i].balance = newBalance;
           seatModified = true;
         }
       }
@@ -115,7 +140,91 @@ export const refillBalance = mutation({
       }
     }
 
-    return 3000;
+    return newBalance;
   },
+});
+
+export const getMyRole = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return { role: "guest", signupApproved: false, isAnonymous: true };
+    const user = await ctx.db.get(userId);
+    return {
+      role: user?.role ?? "user",
+      signupApproved: user?.signupApproved ?? false,
+      isAnonymous: user?.isAnonymous ?? false,
+    };
+  }
+});
+
+export const getAllUsersAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("로그인이 필요합니다.");
+    const currentUser = await ctx.db.get(userId);
+    if (currentUser?.role !== "admin") {
+      throw new Error("관리자 권한이 필요합니다.");
+    }
+    const users = await ctx.db.query("users").collect();
+    return users
+      .filter(u => u.isOnboarded && !u.isAnonymous)
+      .map(u => ({
+        _id: u._id,
+        nickname: u.nickname ?? "No name",
+        email: u.email ?? "No email",
+        balance: u.balance ?? 0,
+        role: u.role ?? "user",
+        signupApproved: u.signupApproved ?? false,
+      }));
+  }
+});
+
+export const toggleUserApproval = mutation({
+  args: { targetUserId: v.id("users"), approved: v.boolean() },
+  handler: async (ctx, { targetUserId, approved }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("로그인이 필요합니다.");
+    const currentUser = await ctx.db.get(userId);
+    if (currentUser?.role !== "admin") {
+      throw new Error("관리자 권한이 필요합니다.");
+    }
+    await ctx.db.patch(targetUserId, { signupApproved: approved });
+  }
+});
+
+export const updateUserBalanceAdmin = mutation({
+  args: { targetUserId: v.id("users"), newBalance: v.number() },
+  handler: async (ctx, { targetUserId, newBalance }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("로그인이 필요합니다.");
+    const currentUser = await ctx.db.get(userId);
+    if (currentUser?.role !== "admin") {
+      throw new Error("관리자 권한이 필요합니다.");
+    }
+    if (newBalance < 0) throw new Error("잔액은 0 이상이어야 합니다.");
+    
+    await ctx.db.patch(targetUserId, { balance: newBalance });
+
+    // Sync balance across any active table seats
+    const activeTables = await ctx.db.query("tables").collect();
+    for (const table of activeTables) {
+      let seatModified = false;
+      const updatedSeats = [...table.seats];
+      for (let i = 0; i < 6; i++) {
+        if (updatedSeats[i].userId === targetUserId) {
+          updatedSeats[i].balance = newBalance;
+          seatModified = true;
+        }
+      }
+      if (seatModified) {
+        await ctx.db.patch(table._id, {
+          seats: updatedSeats,
+          lastUpdated: Date.now(),
+        });
+      }
+    }
+  }
 });
 

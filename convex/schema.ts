@@ -59,8 +59,13 @@ export default defineSchema({
 
     // Custom properties
     nickname: v.optional(v.string()),
-    balance: v.optional(v.number()), // default $3000
+    balance: v.optional(v.number()), // default $10000
     isOnboarded: v.optional(v.boolean()), // default false
+    isAnonymous: v.optional(v.boolean()),
+    role: v.optional(v.string()), // 'admin' or 'user'
+    lastRefillDate: v.optional(v.string()), // 'YYYY-MM-DD'
+    dailyRefillCount: v.optional(v.number()),
+    signupApproved: v.optional(v.boolean()), // approval status for signup
   })
     .index("by_nickname", ["nickname"])
     .index("email", ["email"])

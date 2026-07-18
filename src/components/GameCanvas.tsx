@@ -110,6 +110,15 @@ const GameCanvas = memo(function GameCanvas({
   const lastSplitCardsStateRef = useRef<{ [seatIdx: number]: number }>({});
 
   const [hoveredSeat, setHoveredSeat] = useState<number | null>(null);
+  const [seatFrontHand, setSeatFrontHand] = useState<{ [seatIdx: number]: number }>({});
+  const [focusedSeatIndex, setFocusedSeatIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (table?.activeSeatIndex !== undefined) {
+      setFocusedSeatIndex(null);
+    }
+  }, [table?.activeSeatIndex]);
+
   const [isPortrait, setIsPortrait] = useState<boolean>(() => {
     return typeof window !== "undefined" && window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
   });
@@ -124,23 +133,17 @@ const GameCanvas = memo(function GameCanvas({
   const CARD_WIDTH = 65;
   const CARD_HEIGHT = 95;
 
-  // Calculate coordinates for the 12 seats
+  // Calculate coordinates for the 6 seats
   const getSeatCoords = (index: number) => {
     if (isPortrait) {
-      // 12 seats arranged in a deep U-shape for portrait mode
+      // 6 seats arranged in a deep U-shape for portrait mode
       const portraitCoords = [
-        { x: 140, y: 300 }, // Seat 0
-        { x: 140, y: 420 }, // Seat 1
-        { x: 150, y: 540 }, // Seat 2
-        { x: 170, y: 660 }, // Seat 3
-        { x: 220, y: 780 }, // Seat 4
-        { x: 320, y: 860 }, // Seat 5
-        { x: 480, y: 860 }, // Seat 6
-        { x: 580, y: 780 }, // Seat 7
-        { x: 630, y: 660 }, // Seat 8
-        { x: 650, y: 540 }, // Seat 9
-        { x: 660, y: 420 }, // Seat 10
-        { x: 660, y: 300 }, // Seat 11
+        { x: 150, y: 350 }, // Seat 0
+        { x: 170, y: 560 }, // Seat 1
+        { x: 250, y: 770 }, // Seat 2
+        { x: 550, y: 770 }, // Seat 3
+        { x: 630, y: 560 }, // Seat 4
+        { x: 650, y: 350 }, // Seat 5
       ];
       return {
         x: portraitCoords[index].x,
@@ -149,11 +152,11 @@ const GameCanvas = memo(function GameCanvas({
       };
     }
 
-    // 12 seats arranged from PI * 0.85 to PI * 0.15 (Landscape)
-    const startAngle = Math.PI * 0.85;
-    const endAngle = Math.PI * 0.15;
+    // 6 seats arranged from PI * 0.82 to PI * 0.18 (Landscape)
+    const startAngle = Math.PI * 0.82;
+    const endAngle = Math.PI * 0.18;
     const angleRange = startAngle - endAngle;
-    const angle = startAngle - (index / 11) * angleRange;
+    const angle = startAngle - (index / 5) * angleRange;
     
     const radiusX = 400;
     const radiusY = 220;
@@ -176,27 +179,19 @@ const GameCanvas = memo(function GameCanvas({
         chips: { x: 0, y: -70 }
       };
     }
-    // Left-side seats (0, 1, 2, 3, 4)
-    if (index <= 4) {
+    // Left-side seats (0, 1, 2)
+    if (index <= 2) {
       return {
         card: { x: 55, y: -47 },
         badge: { x: 85, y: -73 },
         chips: { x: 85, y: -5 }
       };
     }
-    // Right-side seats (7, 8, 9, 10, 11)
-    if (index >= 7) {
-      return {
-        card: { x: -120, y: -47 },
-        badge: { x: -90, y: -73 },
-        chips: { x: -90, y: -5 }
-      };
-    }
-    // Bottom seats (5, 6)
+    // Right-side seats (3, 4, 5)
     return {
-      card: { x: -20, y: -95 },
-      badge: { x: 0, y: -121 },
-      chips: { x: 0, y: -125 }
+      card: { x: -120, y: -47 },
+      badge: { x: -90, y: -73 },
+      chips: { x: -90, y: -5 }
     };
   };
 
@@ -400,14 +395,34 @@ const GameCanvas = memo(function GameCanvas({
       drawDealerZone(ctx);
 
       // 3. Draw player seats
+      const topSeatIdx = focusedSeatIndex !== null ? focusedSeatIndex : table.activeSeatIndex;
+
       table.seats.forEach((seat: any, index: number) => {
+        if (index === topSeatIdx) return;
         const coords = getSeatCoords(index);
         const isHovered = hoveredSeat === index;
         const isActive = table.activeSeatIndex === index;
         const isPlayerSeat = seat.userId === currentUserId && currentUserId !== null;
 
+        ctx.save();
+        if (table.status === "playing" && index !== topSeatIdx) {
+          ctx.globalAlpha = 0.55;
+        }
         drawSeat(ctx, seat, coords, isActive, isHovered, isPlayerSeat, index);
+        ctx.restore();
       });
+
+      if (topSeatIdx !== -1 && topSeatIdx < 6) {
+        const seat = table.seats[topSeatIdx];
+        const coords = getSeatCoords(topSeatIdx);
+        const isHovered = hoveredSeat === topSeatIdx;
+        const isActive = table.activeSeatIndex === topSeatIdx;
+        const isPlayerSeat = seat.userId === currentUserId && currentUserId !== null;
+
+        ctx.save();
+        drawSeat(ctx, seat, coords, isActive, isHovered, isPlayerSeat, topSeatIdx);
+        ctx.restore();
+      }
 
       // 4. Draw static card hands (already dealt)
       drawDealerCards(ctx);
@@ -747,11 +762,13 @@ const GameCanvas = memo(function GameCanvas({
           let scoreText = `${val}`;
           if (seat.status === "blackjack") scoreText = "BJ 21";
           if (seat.status === "busted") scoreText = "BUST";
+          if (seat.status === "surrendered") scoreText = "SURR";
 
           c.save();
           c.fillStyle = seat.status === "won" ? "#10b981" : 
                         (seat.status === "lost" || seat.status === "busted" ? "#ef4444" : 
-                        (seat.status === "push" ? "#94a3b8" : "rgba(15, 23, 42, 0.9)"));
+                        (seat.status === "surrendered" ? "#f97316" : // Orange for surrender
+                        (seat.status === "push" ? "#94a3b8" : "rgba(15, 23, 42, 0.9)")));
           c.beginPath();
           const badgeW = isPortrait ? 76 : 60;
           const badgeH = isPortrait ? 20 : 16;
@@ -879,112 +896,183 @@ const GameCanvas = memo(function GameCanvas({
       });
     };
 
-    const drawPlayerCards = (c: CanvasRenderingContext2D) => {
-      table.seats.forEach((seat: any, seatIdx: number) => {
-        if (seat.userId === null || seat.status === "idle") return;
+    const drawSeatCards = (c: CanvasRenderingContext2D, seatIdx: number) => {
+      const seat = table.seats[seatIdx];
+      if (seat.userId === null || seat.status === "idle") return;
 
-        const seatCoords = getSeatCoords(seatIdx);
-        const offsets = getSeatOffsets(seatIdx);
-        const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
+      const seatCoords = getSeatCoords(seatIdx);
+      const offsets = getSeatOffsets(seatIdx);
+      const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
 
-        const hands = [];
-        if (isSplit) {
-          hands.push({
-            cards: seat.cards,
-            status: seat.status,
-            activeHandIdx: 0,
-            cardOffsetX: -65,
-            badgeOffsetX: -45,
-          });
-          hands.push({
-            cards: seat.splitCards,
-            status: seat.splitStatus || "playing",
-            activeHandIdx: 1,
-            cardOffsetX: 15,
-            badgeOffsetX: 35,
-          });
-        } else {
-          hands.push({
-            cards: seat.cards,
-            status: seat.status,
-            activeHandIdx: -1,
-            cardOffsetX: offsets.card.x,
-            badgeOffsetX: offsets.badge.x,
-          });
+      const hands = [];
+      if (isSplit) {
+        hands.push({
+          cards: seat.cards,
+          status: seat.status,
+          activeHandIdx: 0,
+          cardOffsetX: -65,
+        });
+        hands.push({
+          cards: seat.splitCards,
+          status: seat.splitStatus || "playing",
+          activeHandIdx: 1,
+          cardOffsetX: 15,
+        });
+        
+        // If split, draw the active or user-focused hand last so it renders on top of the inactive hand
+        const activeHandIndex = seatFrontHand[seatIdx] !== undefined 
+          ? seatFrontHand[seatIdx] 
+          : (seat.activeHandIndex ?? 0);
+        if (activeHandIndex === 0) {
+          hands.reverse();
         }
+      } else {
+        hands.push({
+          cards: seat.cards,
+          status: seat.status,
+          activeHandIdx: -1,
+          cardOffsetX: offsets.card.x,
+        });
+      }
 
-        hands.forEach((hand) => {
-          const cards = hand.cards || [];
-          
-          cards.forEach((card: any, cardIdx: number) => {
-            const animId = hand.activeHandIdx === 1 
-              ? `seat-split-${seatIdx}-${cardIdx}-`
-              : `seat-${seatIdx}-${cardIdx}-`;
-            const isAnimating = animatedCardsRef.current.some(ac => ac.id.startsWith(animId));
-            if (isAnimating) return; // let animation draw it
+      hands.forEach((hand) => {
+        const cards = hand.cards || [];
+        
+        cards.forEach((card: any, cardIdx: number) => {
+          const animId = hand.activeHandIdx === 1 
+            ? `seat-split-${seatIdx}-${cardIdx}-`
+            : `seat-${seatIdx}-${cardIdx}-`;
+          const isAnimating = animatedCardsRef.current.some(ac => ac.id.startsWith(animId));
+          if (isAnimating) return; // let animation draw it
 
-            const x = seatCoords.x + hand.cardOffsetX + cardIdx * 16;
-            const y = seatCoords.y + offsets.card.y;
-            const isRed = ["H", "D"].includes(card.suit);
+          const x = seatCoords.x + hand.cardOffsetX + cardIdx * 16;
+          const y = seatCoords.y + offsets.card.y;
+          const isRed = ["H", "D"].includes(card.suit);
 
-            drawCardShape(c, x, y, CARD_WIDTH, CARD_HEIGHT, 5, isRed, card.value, card.suit, !!card.hidden);
-          });
-
-          // Render score value above this card hand
-          if (cards.length > 0) {
-            const val = getHandValue(cards);
-            
-            c.save();
-            // Highlight active hand in gold, otherwise standard border
-            const isHandActive = table.activeSeatIndex === seatIdx && 
-                                 table.status === "playing" &&
-                                 (hand.activeHandIdx === -1 || table.seats[seatIdx].activeHandIndex === hand.activeHandIdx);
-            
-            c.fillStyle = "rgba(15, 23, 42, 0.85)";
-            c.strokeStyle = isHandActive ? "#f59e0b" : "#e2b842";
-            c.lineWidth = isHandActive ? 2.5 : 1.5;
-            
-            const badgeX = seatCoords.x + hand.badgeOffsetX;
-            const badgeY = seatCoords.y + offsets.badge.y;
-            
-            c.beginPath();
-            const badgeR = isPortrait ? 22 : 18;
-            c.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
-            c.fill();
-            c.stroke();
-            
-            // Pulsing highlight around the active score badge
-            if (isHandActive) {
-              const pulse = badgeR + Math.sin(Date.now() * 0.007) * 3.5;
-              c.strokeStyle = "rgba(245, 158, 11, 0.5)";
-              c.lineWidth = 2;
-              c.beginPath();
-              c.arc(badgeX, badgeY, pulse, 0, Math.PI * 2);
-              c.stroke();
-            }
-
-            // Draw a gold recommendation indicator dot if helper is enabled
-            if (isStrategyHelperEnabled && isHandActive) {
-              c.fillStyle = "#e2b842";
-              c.beginPath();
-              c.arc(badgeX + (isPortrait ? 13 : 11), badgeY - (isPortrait ? 13 : 11), 4, 0, Math.PI * 2);
-              c.fill();
-            }
-
-            c.fillStyle = "#ffffff";
-            c.font = isPortrait ? "bold 18px sans-serif" : "bold 14px sans-serif";
-            c.textAlign = "center";
-            c.textBaseline = "middle";
-
-            let displayVal = `${val}`;
-            if (hand.status === "blackjack") displayVal = "BJ";
-            if (hand.status === "busted") displayVal = "BT";
-
-            c.fillText(displayVal, badgeX, badgeY);
-            c.restore();
-          }
+          drawCardShape(c, x, y, CARD_WIDTH, CARD_HEIGHT, 5, isRed, card.value, card.suit, !!card.hidden);
         });
       });
+    };
+
+    const drawSeatBadges = (c: CanvasRenderingContext2D, seatIdx: number) => {
+      const seat = table.seats[seatIdx];
+      if (seat.userId === null || seat.status === "idle") return;
+
+      const seatCoords = getSeatCoords(seatIdx);
+      const offsets = getSeatOffsets(seatIdx);
+      const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
+
+      const hands = [];
+      if (isSplit) {
+        hands.push({
+          cards: seat.cards,
+          status: seat.status,
+          activeHandIdx: 0,
+          badgeOffsetX: -45,
+        });
+        hands.push({
+          cards: seat.splitCards,
+          status: seat.splitStatus || "playing",
+          activeHandIdx: 1,
+          badgeOffsetX: 35,
+        });
+        
+        // Draw the active or user-focused hand's badge last so it overlaps the inactive hand's components
+        const activeHandIndex = seatFrontHand[seatIdx] !== undefined 
+          ? seatFrontHand[seatIdx] 
+          : (seat.activeHandIndex ?? 0);
+        if (activeHandIndex === 0) {
+          hands.reverse();
+        }
+      } else {
+        hands.push({
+          cards: seat.cards,
+          status: seat.status,
+          activeHandIdx: -1,
+          badgeOffsetX: offsets.badge.x,
+        });
+      }
+
+      hands.forEach((hand) => {
+        const cards = hand.cards || [];
+        
+        if (cards.length > 0) {
+          const val = getHandValue(cards);
+          
+          c.save();
+          // Highlight active hand in gold, otherwise standard border
+          const isHandActive = table.activeSeatIndex === seatIdx && 
+                               table.status === "playing" &&
+                               (hand.activeHandIdx === -1 || table.seats[seatIdx].activeHandIndex === hand.activeHandIdx);
+          
+          c.fillStyle = "rgba(15, 23, 42, 0.85)";
+          c.strokeStyle = isHandActive ? "#f59e0b" : "#e2b842";
+          c.lineWidth = isHandActive ? 2.5 : 1.5;
+          
+          const badgeX = seatCoords.x + hand.badgeOffsetX;
+          const badgeY = seatCoords.y + offsets.badge.y;
+          
+          c.beginPath();
+          const badgeR = isPortrait ? 22 : 18;
+          c.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+          
+          // Pulsing highlight around the active score badge
+          if (isHandActive) {
+            const pulse = badgeR + Math.sin(Date.now() * 0.007) * 3.5;
+            c.strokeStyle = "rgba(245, 158, 11, 0.5)";
+            c.lineWidth = 2;
+            c.beginPath();
+            c.arc(badgeX, badgeY, pulse, 0, Math.PI * 2);
+            c.stroke();
+          }
+
+          // Draw a gold recommendation indicator dot if helper is enabled
+          if (isStrategyHelperEnabled && isHandActive) {
+            c.fillStyle = "#e2b842";
+            c.beginPath();
+            c.arc(badgeX + (isPortrait ? 13 : 11), badgeY - (isPortrait ? 13 : 11), 4, 0, Math.PI * 2);
+            c.fill();
+          }
+
+          c.fillStyle = "#ffffff";
+          c.font = isPortrait ? "bold 18px sans-serif" : "bold 14px sans-serif";
+          c.textAlign = "center";
+          c.textBaseline = "middle";
+
+          let displayVal = `${val}`;
+          if (hand.status === "blackjack") displayVal = "BJ";
+          if (hand.status === "busted") displayVal = "BT";
+          if (hand.status === "surrendered") displayVal = "SR";
+
+          c.fillText(displayVal, badgeX, badgeY);
+          c.restore();
+        }
+      });
+    };
+
+    const drawPlayerCards = (c: CanvasRenderingContext2D) => {
+      const topSeatIdx = focusedSeatIndex !== null ? focusedSeatIndex : table.activeSeatIndex;
+
+      // Pass 1: Draw inactive player cards first
+      for (let seatIdx = 0; seatIdx < 6; seatIdx++) {
+        if (seatIdx === topSeatIdx) continue;
+        drawSeatCards(c, seatIdx);
+      }
+      // Draw top seat cards last so they are drawn on top
+      if (topSeatIdx !== -1 && topSeatIdx < 6) {
+        drawSeatCards(c, topSeatIdx);
+      }
+
+      // Pass 2: Draw all player score badges (inactive first, active last)
+      for (let seatIdx = 0; seatIdx < 6; seatIdx++) {
+        if (seatIdx === topSeatIdx) continue;
+        drawSeatBadges(c, seatIdx);
+      }
+      if (topSeatIdx !== -1 && topSeatIdx < 6) {
+        drawSeatBadges(c, topSeatIdx);
+      }
     };
 
     const drawAnimatingCards = (c: CanvasRenderingContext2D, dt: number) => {
@@ -1112,8 +1200,96 @@ const GameCanvas = memo(function GameCanvas({
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
-    // Check if player clicked any seat circle (12 seats)
-    for (let i = 0; i < 12; i++) {
+    // 1. Check if clicked inside any seat's split hands or badges
+    for (let i = 0; i < 6; i++) {
+      const seat = table.seats[i];
+      if (seat.userId === null || seat.status === "idle") continue;
+      const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
+      if (!isSplit) continue;
+
+      const coords = getSeatCoords(i);
+      const offsets = getSeatOffsets(i);
+      
+      // Hand 1 bounds
+      const h1MinX = coords.x - 65;
+      const h1MaxX = coords.x - 65 + CARD_WIDTH + ((seat.cards?.length || 1) - 1) * 16;
+      const hMinY = coords.y + offsets.card.y;
+      const hMaxY = coords.y + offsets.card.y + CARD_HEIGHT;
+
+      // Hand 2 bounds
+      const h2MinX = coords.x + 15;
+      const h2MaxX = coords.x + 15 + CARD_WIDTH + ((seat.splitCards?.length || 1) - 1) * 16;
+
+      // Check card bounds
+      if (clickY >= hMinY && clickY <= hMaxY) {
+        if (clickX >= h1MinX && clickX <= h1MaxX) {
+          setSeatFrontHand(prev => ({ ...prev, [i]: 0 }));
+          setFocusedSeatIndex(i);
+          return;
+        } else if (clickX >= h2MinX && clickX <= h2MaxX) {
+          setSeatFrontHand(prev => ({ ...prev, [i]: 1 }));
+          setFocusedSeatIndex(i);
+          return;
+        }
+      }
+
+      // Check badge bounds
+      const bY = coords.y + offsets.badge.y;
+      const badgeR = isPortrait ? 22 : 18;
+      
+      // Badge 1 (Hand 1)
+      const b1X = coords.x - 45;
+      const b1Dist = Math.sqrt((clickX - b1X) ** 2 + (clickY - bY) ** 2);
+      if (b1Dist <= badgeR) {
+        setSeatFrontHand(prev => ({ ...prev, [i]: 0 }));
+        setFocusedSeatIndex(i);
+        return;
+      }
+
+      // Badge 2 (Hand 2)
+      const b2X = coords.x + 35;
+      const b2Dist = Math.sqrt((clickX - b2X) ** 2 + (clickY - bY) ** 2);
+      if (b2Dist <= badgeR) {
+        setSeatFrontHand(prev => ({ ...prev, [i]: 1 }));
+        setFocusedSeatIndex(i);
+        return;
+      }
+    }
+
+    // 2. Check if clicked inside any non-split seat's cards or badge to focus that seat
+    for (let i = 0; i < 6; i++) {
+      const seat = table.seats[i];
+      if (seat.userId === null || seat.status === "idle") continue;
+      const isSplit = seat.splitCards !== undefined && seat.splitCards.length > 0;
+      if (isSplit) continue;
+
+      const coords = getSeatCoords(i);
+      const offsets = getSeatOffsets(i);
+
+      // Card bounds
+      const cardMinX = coords.x + offsets.card.x;
+      const cardMaxX = coords.x + offsets.card.x + CARD_WIDTH + ((seat.cards?.length || 1) - 1) * 16;
+      const cardMinY = coords.y + offsets.card.y;
+      const cardMaxY = coords.y + offsets.card.y + CARD_HEIGHT;
+
+      if (clickX >= cardMinX && clickX <= cardMaxX && clickY >= cardMinY && clickY <= cardMaxY) {
+        setFocusedSeatIndex(i);
+        return;
+      }
+
+      // Badge bounds
+      const bX = coords.x + offsets.badge.x;
+      const bY = coords.y + offsets.badge.y;
+      const badgeR = isPortrait ? 22 : 18;
+      const distToBadge = Math.sqrt((clickX - bX) ** 2 + (clickY - bY) ** 2);
+      if (distToBadge <= badgeR) {
+        setFocusedSeatIndex(i);
+        return;
+      }
+    }
+
+    // 3. Check if player clicked any seat circle (6 seats)
+    for (let i = 0; i < 6; i++) {
       const coords = getSeatCoords(i);
       // Distance calculation
       const dx = clickX - coords.x;
@@ -1122,6 +1298,7 @@ const GameCanvas = memo(function GameCanvas({
 
       if (dist <= 45) { // seat radius is 45
         // Clicked!
+        setFocusedSeatIndex(i);
         if (table.seats[i].userId === null) {
           onJoinSeat(i);
         } else if (table.seats[i].userId === currentUserId) {
@@ -1145,7 +1322,7 @@ const GameCanvas = memo(function GameCanvas({
     const mouseY = (e.clientY - rect.top) * scaleY;
 
     let foundSeat: number | null = null;
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 6; i++) {
       const coords = getSeatCoords(i);
       const dx = mouseX - coords.x;
       const dy = mouseY - coords.y;
