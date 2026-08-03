@@ -146,9 +146,7 @@ export const createTable = mutation({
     if (userId === null) throw new Error("로그인이 필요합니다.");
 
     const user = await ctx.db.get(userId);
-    if (!user || (!user.isAnonymous && user.signupApproved === false)) {
-      throw new Error("가입 승인 대기 중입니다. 관리자 승인 후 이용 가능합니다.");
-    }
+    if (!user) throw new Error("사용자를 찾을 수 없습니다.");
 
     const trimmed = name.trim();
     if (trimmed.length < 2 || trimmed.length > 25) {
@@ -204,10 +202,6 @@ export const joinSeat = mutation({
 
     const user = await ctx.db.get(userId);
     if (!user || !user.isOnboarded) throw new Error("프로필 설정을 완료해주세요.");
-    if (!user.isAnonymous && user.signupApproved === false) {
-      throw new Error("가입 승인 대기 중입니다. 관리자 승인 후 이용 가능합니다.");
-    }
-
     const table = await ctx.db.get(tableId);
     if (!table) throw new Error("테이블을 찾을 수 없습니다.");
 
@@ -2016,4 +2010,3 @@ export const deleteTableIfEmpty = internalMutation({
     }
   },
 });
-

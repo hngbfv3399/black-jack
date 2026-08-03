@@ -112,26 +112,6 @@ export default function App() {
     );
   }
 
-  // Check if registered user has been approved by admin
-  if (isAuthenticated && user && !user.isAnonymous && user.signupApproved === false) {
-    return (
-      <div className="login-container" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "radial-gradient(circle at center, #1e293b 0%, #0f172a 100%)" }}>
-        <div className="login-card glass animate-fade-in" style={{ textAlign: "center", padding: "40px", maxWidth: "420px", width: "90%", borderRadius: "16px", boxShadow: "0 10px 30px rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(15, 23, 42, 0.75)", backdropFilter: "blur(12px)" }}>
-          <Spade className="logo-icon-large" style={{ color: "#ef4444", width: "48px", height: "48px", marginBottom: "20px", margin: "0 auto 20px auto" }} />
-          <h2 style={{ color: "#ef4444", fontWeight: "bold", fontSize: "20px", marginBottom: "12px", textAlign: "center" }}>가입 승인 대기 중</h2>
-          <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.6", marginBottom: "24px", textAlign: "center" }}>
-            회원님의 가입 요청이 등록되었습니다.<br />
-            보안 및 비공개 게임 운영을 위해 관리자의 승인이 필요합니다.<br />
-            승인이 완료될 때까지 잠시만 기다려 주시거나 관리자에게 문의해 주세요.
-          </p>
-          <button className="btn-secondary" onClick={handleSignOut} style={{ width: "100%", padding: "10px", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
-            로그아웃 후 게스트로 로그인
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // User details successfully fetched but not onboarded yet
   if (user && !user.isOnboarded) {
     return <Onboarding onComplete={() => {}} />;

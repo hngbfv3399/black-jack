@@ -48,8 +48,8 @@ export const completeOnboarding = mutation({
       throw new Error("이 닉네임은 이미 다른 플레이어가 사용 중입니다.");
     }
 
-    // Update user profile with $10000 starting cash
-    // If this is the very first user in the database, bootstrap them as approved admin
+    // Update user profile with $10000 starting cash.
+    // The first user remains the initial administrator.
     const allUsers = await ctx.db.query("users").collect();
     const isFirstUser = allUsers.length <= 1; // including the current user
 
@@ -58,7 +58,6 @@ export const completeOnboarding = mutation({
       balance: 10000,
       isOnboarded: true,
       role: isFirstUser ? "admin" : "user",
-      signupApproved: isFirstUser ? true : false,
     });
 
     return userId;
@@ -96,10 +95,6 @@ export const refillBalance = mutation({
     const user = await ctx.db.get(userId);
     if (!user) {
       throw new Error("사용자를 찾을 수 없습니다.");
-    }
-
-    if (!user.isAnonymous && user.signupApproved === false) {
-      throw new Error("가입 승인 대기 중입니다. 관리자 승인 후 이용 가능합니다.");
     }
 
     const currentBalance = user.balance ?? 0;
@@ -140,17 +135,16 @@ export const getMyRole = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) return { role: "guest", signupApproved: false, isAnonymous: true };
+    if (userId === null) return { role: "guest", isAnonymous: true };
     try {
       const user = await ctx.db.get(userId);
       return {
         role: user?.role ?? "user",
-        signupApproved: user?.signupApproved ?? false,
         isAnonymous: user?.isAnonymous ?? false,
       };
     } catch (e) {
       // If the ID is invalid (e.g. database was wiped/reset, causing invalid ID version decode error)
-      return { role: "guest", signupApproved: false, isAnonymous: true };
+      return { role: "guest", isAnonymous: true };
     }
   }
 });
@@ -173,21 +167,7 @@ export const getAllUsersAdmin = query({
         email: u.email ?? "No email",
         balance: u.balance ?? 0,
         role: u.role ?? "user",
-        signupApproved: u.signupApproved ?? false,
       }));
-  }
-});
-
-export const toggleUserApproval = mutation({
-  args: { targetUserId: v.id("users"), approved: v.boolean() },
-  handler: async (ctx, { targetUserId, approved }) => {
-    const userId = await getAuthUserId(ctx);
-    if (userId === null) throw new Error("로그인이 필요합니다.");
-    const currentUser = await ctx.db.get(userId);
-    if (currentUser?.role !== "admin") {
-      throw new Error("관리자 권한이 필요합니다.");
-    }
-    await ctx.db.patch(targetUserId, { signupApproved: approved });
   }
 });
 

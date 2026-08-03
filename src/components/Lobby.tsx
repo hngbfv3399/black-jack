@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { LogOut, Plus, RefreshCw, Spade, Trophy, Coins, Settings, Check, X } from "lucide-react";
+import { LogOut, Plus, RefreshCw, Spade, Trophy, Coins, Settings, X } from "lucide-react";
 
 interface LobbyProps {
   user: any;
@@ -288,19 +288,10 @@ export default function Lobby({ user, onSelectTable, onSignOut }: LobbyProps) {
 
 function AdminPanel({ onClose }: { onClose: () => void }) {
   const adminUsers = useQuery(api.users.getAllUsersAdmin);
-  const toggleApproval = useMutation(api.users.toggleUserApproval);
   const updateBalance = useMutation(api.users.updateUserBalanceAdmin);
 
   const [editingBalances, setEditingBalances] = useState<{ [userId: string]: string }>({});
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
-
-  const handleToggleApproval = async (targetUserId: any, currentStatus: boolean) => {
-    try {
-      await toggleApproval({ targetUserId, approved: !currentStatus });
-    } catch (err: any) {
-      alert(err.message || "승인 상태 변경에 실패했습니다.");
-    }
-  };
 
   const handleUpdateBalance = async (targetUserId: any) => {
     const valStr = editingBalances[targetUserId];
@@ -390,35 +381,6 @@ function AdminPanel({ onClose }: { onClose: () => void }) {
                         {updatingUserId === userItem._id ? "저장중" : "저장"}
                       </button>
                     </div>
-
-                    {/* Approval toggle */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>승인 여부:</span>
-                      <button
-                        onClick={() => handleToggleApproval(userItem._id, userItem.signupApproved)}
-                        disabled={userItem.role === "admin"} // admin cannot be unapproved
-                        style={{
-                          padding: "4px 12px",
-                          fontSize: "11px",
-                          borderRadius: "6px",
-                          border: "none",
-                          cursor: userItem.role === "admin" ? "default" : "pointer",
-                          background: userItem.signupApproved 
-                            ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" 
-                            : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                          color: "white",
-                          fontWeight: "bold",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          boxShadow: userItem.signupApproved ? "0 2px 8px rgba(16, 185, 129, 0.2)" : "0 2px 8px rgba(239, 68, 68, 0.2)"
-                        }}
-                      >
-                        {userItem.signupApproved ? <Check size={12} /> : <X size={12} />}
-                        {userItem.signupApproved ? "승인 완료" : "대기 중"}
-                      </button>
-                    </div>
-
                   </div>
                 );
               })}
